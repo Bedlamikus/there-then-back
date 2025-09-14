@@ -3,26 +3,24 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class Projectile : MonoBehaviour
 {
-    public float carveRadius = 6f; // радиус сферы в блоках/юнитах
+    public float radius = 6f;
+    public float maxDamage = 10f; // сколько наносим в центре сферы
     public bool destroyOnHit = true;
 
-    void OnCollisionEnter(Collision collision)
+    void OnCollisionEnter(Collision c)
     {
-        TryCarve(collision.GetContact(0).point);
+        DoDamage(c.GetContact(0).point);
     }
 
     void OnTriggerEnter(Collider other)
     {
-        // Если используешь триггеры вместо физ. столкновений
-        TryCarve(transform.position);
+        DoDamage(transform.position);
     }
 
-    void TryCarve(Vector3 hitPoint)
+    void DoDamage(Vector3 hitPoint)
     {
         if (VoxelWorld.Instance != null)
-        {
-            VoxelWorld.Instance.CarveSphere(hitPoint, carveRadius);
-        }
+            VoxelWorld.Instance.DamageSphere(hitPoint, radius, maxDamage);
 
         if (destroyOnHit) Destroy(gameObject);
     }

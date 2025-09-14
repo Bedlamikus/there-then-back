@@ -1,4 +1,4 @@
-using UnityEngine;
+п»їusing UnityEngine;
 
 public class VoxelWorldGenerator : MonoBehaviour
 {
@@ -31,7 +31,7 @@ public class VoxelWorldGenerator : MonoBehaviour
     public float caveThresholdMid = 0.58f;
     public float caveThresholdTop = 0.64f;
 
-    // Типы блоков
+    // РўРёРїС‹ Р±Р»РѕРєРѕРІ
     const int Block_Grass = 0;
     const int Block_Dirt = 1;
     const int Block_Stone = 2;
@@ -39,7 +39,7 @@ public class VoxelWorldGenerator : MonoBehaviour
     const int Block_Coal = 6;
     const int Block_Gold = 7;
 
-    // Смещения шумов
+    // РЎРјРµС‰РµРЅРёСЏ С€СѓРјРѕРІ
     Vector2 heightOffset;
     Vector2 grassOffset;
     Vector2 dirtOffset;
@@ -64,14 +64,14 @@ public class VoxelWorldGenerator : MonoBehaviour
     }
 
     /// <summary>
-    /// Создаёт данные чанка (int[,,]) без построения меша.
-    /// Используется VoxelWorld.
+    /// РЎРѕР·РґР°С‘С‚ РґР°РЅРЅС‹Рµ С‡Р°РЅРєР° (int[,,]) Р±РµР· РїРѕСЃС‚СЂРѕРµРЅРёСЏ РјРµС€Р°.
+    /// РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ VoxelWorld.
     /// </summary>
     public int[,,] BuildChunkData(int cx, int cz)
     {
         var data = new int[VoxelChunk16.WIDTH, VoxelChunk16.HEIGHT, VoxelChunk16.DEPTH];
 
-        // Базовый ландшафт
+        // Р‘Р°Р·РѕРІС‹Р№ Р»Р°РЅРґС€Р°С„С‚
         for (int z = 0; z < VoxelChunk16.DEPTH; z++)
             for (int x = 0; x < VoxelChunk16.WIDTH; x++)
             {
@@ -100,21 +100,21 @@ public class VoxelWorldGenerator : MonoBehaviour
                     else data[x, y, z] = Block_Stone;
                 }
 
-                // нижний слой всегда камень
+                // РЅРёР¶РЅРёР№ СЃР»РѕР№ РІСЃРµРіРґР° РєР°РјРµРЅСЊ
                 data[x, 0, z] = Block_Stone;
             }
 
-        // Руды
+        // Р СѓРґС‹
         GenerateOresInChunk(data, cx, cz);
 
-        // Пещеры
+        // РџРµС‰РµСЂС‹
         if (enableCaves)
             CarveCavesInChunk(data, cx, cz);
 
         return data;
     }
 
-    // ===== Руды =====
+    // ===== Р СѓРґС‹ =====
     void GenerateOresInChunk(int[,,] data, int cx, int cz)
     {
         int chSeed = seed ^ (cx * 73856093) ^ (cz * 19349663);
@@ -178,13 +178,13 @@ public class VoxelWorldGenerator : MonoBehaviour
                 }
     }
 
-    // ===== Пещеры =====
+    // ===== РџРµС‰РµСЂС‹ =====
     void CarveCavesInChunk(int[,,] data, int cx, int cz)
     {
         int H = VoxelChunk16.HEIGHT;
 
         for (int z = 0; z < VoxelChunk16.DEPTH; z++)
-            for (int y = 1; y < H; y++) // y=0 остаётся камнем
+            for (int y = 1; y < H; y++) // y=0 РѕСЃС‚Р°С‘С‚СЃСЏ РєР°РјРЅРµРј
                 for (int x = 0; x < VoxelChunk16.WIDTH; x++)
                 {
                     if (data[x, y, z] == Block_Air) continue;

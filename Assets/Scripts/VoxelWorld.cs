@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+п»їusing System.Collections.Generic;
 using UnityEngine;
 
 public class VoxelWorld : MonoBehaviour
@@ -13,79 +13,104 @@ public class VoxelWorld : MonoBehaviour
     public Material atlasMaterial;
     public bool generateColliders = true;
 
-    // Генератор данных (используем его параметры шума/сид и т.п.)
     [Header("Data generator")]
-    public VoxelWorldGenerator generator; // назначь в инспекторе (можно на этот же объект)
+    public VoxelWorldGenerator generator; // РЅР°Р·РЅР°С‡СЊ РІ РёРЅСЃРїРµРєС‚РѕСЂРµ
+
+    // С‚РёРїС‹
+    const int AIR = -1;
+    const int GRASS = 0;
+    const int DIRT = 1;
+    const int STONE = 2;
+    const int COAL = 6;
+    const int GOLD = 7;
 
     public class ChunkEntry
     {
         public int cx, cz;
-        public int[,,] data;
+        public int[,,] data;   // С‚РёРїС‹ Р±Р»РѕРєРѕРІ
+        public short[,,] hp;   // С‚РµРєСѓС‰РёРµ HP Р±Р»РѕРєРѕРІ
         public VoxelChunk16 builder;
         public GameObject go;
     }
 
-    private readonly Dictionary<(int cx, int cz), ChunkEntry> _chunks = new();
+    readonly Dictionary<(int cx, int cz), ChunkEntry> _chunks = new();
 
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-
-        // если генератор не назначен — попробуем найти на этом же объекте
-        if (generator == null) generator = GetComponent<VoxelWorldGenerator>();
-        if (generator == null) generator = gameObject.AddComponent<VoxelWorldGenerator>();
+        if (generator == null) generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
     }
 
     [ContextMenu("Generate world")]
     public void Generate()
     {
-        // очистить старые чанки
-        for (int i = transform.childCount - 1; i >= 0; i--)
-            DestroyImmediate(transform.GetChild(i).gameObject);
-
+        for (int i = transform.childCount - 1; i >= 0; i--) DestroyImmediate(transform.GetChild(i).gameObject);
         _chunks.Clear();
 
-        // сгенерировать новые
         for (int cz = 0; cz < chunksZ; cz++)
             for (int cx = 0; cx < chunksX; cx++)
             {
-                GenerateChunk(cx, cz);
+                var data = generator.BuildChunkData(cx, cz);
+
+                var go = new GameObject($"Chunk({cx},{cz})");
+                go.transform.parent = transform;
+                go.transform.position = new Vector3(cx * VoxelChunk16.WIDTH, 0, cz * VoxelChunk16.DEPTH);
+
+                var builder = go.AddComponent<VoxelChunk16>();
+                builder.atlasMaterial = atlasMaterial;
+                builder.generateCollider = generateColliders;
+                builder.Build(data);
+
+                var entry = new ChunkEntry
+                {
+                    cx = cx,
+                    cz = cz,
+                    data = data,
+                    hp = AllocateHP(data),
+                    builder = builder,
+                    go = go
+                };
+                _chunks[(cx, cz)] = entry;
             }
     }
 
-    void GenerateChunk(int cx, int cz)
+    // ===== HP init =====
+    short[,,] AllocateHP(int[,,] data)
     {
-        // данные чанка из генератора
-        int[,,] data = generator.BuildChunkData(cx, cz);
+        int W = VoxelChunk16.WIDTH, H = VoxelChunk16.HEIGHT, D = VoxelChunk16.DEPTH;
+        var hp = new short[W, H, D];
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < H; y++)
+                for (int z = 0; z < D; z++)
+                {
+                    int t = data[x, y, z];
+                    hp[x, y, z] = (short)(t == AIR ? 0 : GetMaxHP(t));
+                }
+        return hp;
+    }
 
-        // объект + меш
-        var go = new GameObject($"Chunk({cx},{cz})");
-        go.transform.parent = transform;
-        go.transform.position = new Vector3(cx * VoxelChunk16.WIDTH, 0, cz * VoxelChunk16.DEPTH);
-
-        var builder = go.AddComponent<VoxelChunk16>();
-        builder.atlasMaterial = atlasMaterial;
-        builder.generateCollider = generateColliders;
-        builder.Build(data);
-
-        // регистрируем
-        _chunks[(cx, cz)] = new ChunkEntry
+    int GetMaxHP(int blockType)
+    {
+        return blockType switch
         {
-            cx = cx,
-            cz = cz,
-            data = data,
-            builder = builder,
-            go = go
+            GRASS => 5,
+            DIRT => 5,
+            STONE => 8,
+            COAL => 12,
+            GOLD => 12,
+            _ => 6   // РґРµС„РѕР»С‚ РґР»СЏ РЅРµРёР·РІРµСЃС‚РЅС‹С…
         };
     }
 
-    // === Публичный API: вырезать сферу ===
-    public void CarveSphere(Vector3 worldPos, float radius)
+    // ====== СѓСЂРѕРЅ СЃС„РµСЂРѕР№ СЃРѕ СЃРїР°РґРѕРј Рє РєСЂР°СЋ ======
+    // falloff: РІ С†РµРЅС‚СЂРµ 1.0, РЅР° РіСЂР°РЅРёС†Рµ 0.2
+    public void DamageSphere(Vector3 worldPos, float radius, float maxDamage)
     {
         if (_chunks.Count == 0) return;
 
         float r2 = radius * radius;
+        float invR = radius > 0f ? 1f / radius : 0f;
 
         int minX = Mathf.FloorToInt(worldPos.x - radius);
         int maxX = Mathf.CeilToInt(worldPos.x + radius);
@@ -100,38 +125,135 @@ public class VoxelWorld : MonoBehaviour
             for (int z = minZ; z <= maxZ; z++)
                 for (int x = minX; x <= maxX; x++)
                 {
-                    // границы мира (по X/Z)
-                    if (x < 0 || z < 0) continue;
-                    if (x >= chunksX * VoxelChunk16.WIDTH) continue;
-                    if (z >= chunksZ * VoxelChunk16.DEPTH) continue;
+                    if (x < 0 || z < 0 || x >= chunksX * VoxelChunk16.WIDTH || z >= chunksZ * VoxelChunk16.DEPTH) continue;
 
-                    // проверка сферы (по центрам вокселей)
+                    // СЂР°СЃСЃС‚РѕСЏРЅРёРµ РїРѕ С†РµРЅС‚СЂР°Рј РІРѕРєСЃРµР»РµР№
                     float dx = (x + 0.5f) - worldPos.x;
                     float dy = (y + 0.5f) - worldPos.y;
                     float dz = (z + 0.5f) - worldPos.z;
-                    if (dx * dx + dy * dy + dz * dz > r2) continue;
+                    float d2 = dx * dx + dy * dy + dz * dz;
+                    if (d2 > r2) continue;
 
-                    // мировой -> чанк/локальные индексы
                     int cxi = x / VoxelChunk16.WIDTH;
                     int czi = z / VoxelChunk16.DEPTH;
                     int lx = x % VoxelChunk16.WIDTH;
                     int lz = z % VoxelChunk16.DEPTH;
 
-                    if (_chunks.TryGetValue((cxi, czi), out var entry))
+                    if (!_chunks.TryGetValue((cxi, czi), out var entry)) continue;
+
+                    int type = entry.data[lx, y, lz];
+                    if (type == AIR) continue;
+
+                    // СЂР°РґРёР°Р»СЊРЅС‹Р№ СЃРїР°Рґ СѓСЂРѕРЅР°: 1 в†’ 0.2 РЅР° РєСЂР°СЋ (РјРѕР¶РЅРѕ SmoothStep РґР»СЏ РїР»Р°РІРЅРѕСЃС‚Рё)
+                    float dist = Mathf.Sqrt(d2);
+                    float t = Mathf.Clamp01(dist * invR);
+                    float falloff = Mathf.Lerp(1f, 0.2f, t);               // Р»РёРЅРµР№РЅС‹Р№
+                                                                           // float falloff = Mathf.Lerp(1f, 0.2f, t*t*(3-2*t));  // СЃРіР»Р°Р¶РµРЅРЅС‹Р№
+
+                    float dmg = maxDamage * falloff;
+
+                    // РїСЂРёРјРµРЅСЏРµРј СѓСЂРѕРЅ
+                    short curHP = entry.hp[lx, y, lz];
+                    if (curHP <= 0) continue;
+
+                    int newHP = curHP - Mathf.CeilToInt(dmg);
+                    if (newHP <= 0)
                     {
-                        if (entry.data[lx, y, lz] != -1)
-                        {
-                            entry.data[lx, y, lz] = -1; // воздух
-                            touched.Add((cxi, czi));
-                        }
+                        entry.hp[lx, y, lz] = 0;
+                        entry.data[lx, y, lz] = AIR;
+                        touched.Add((cxi, czi));
+                    }
+                    else
+                    {
+                        entry.hp[lx, y, lz] = (short)newHP;
+                        // Р±Р»РѕРє РЅРµ СѓРјРµСЂ вЂ” С‡Р°РЅРє РїРµСЂРµСЃС‚СЂР°РёРІР°С‚СЊ РЅРµ РЅСѓР¶РЅРѕ
                     }
                 }
 
-        // перестроить только затронутые
         foreach (var key in touched)
         {
             var entry = _chunks[key];
             entry.builder.Build(entry.data);
         }
+    }
+
+    // (РїРѕ Р¶РµР»Р°РЅРёСЋ) РїСЂСЏРјРѕР№ СѓРґР°СЂ РїРѕ РѕРґРЅРѕРјСѓ Р±Р»РѕРєСѓ:
+    public void DamageBlock(Vector3Int worldBlock, int damage)
+    {
+        int x = worldBlock.x, y = worldBlock.y, z = worldBlock.z;
+        if (x < 0 || z < 0 || y < 0 || y >= VoxelChunk16.HEIGHT) return;
+        if (x >= chunksX * VoxelChunk16.WIDTH || z >= chunksZ * VoxelChunk16.DEPTH) return;
+
+        int cxi = x / VoxelChunk16.WIDTH;
+        int czi = z / VoxelChunk16.DEPTH;
+        int lx = x % VoxelChunk16.WIDTH;
+        int lz = z % VoxelChunk16.DEPTH;
+
+        if (!_chunks.TryGetValue((cxi, czi), out var entry)) return;
+        if (entry.data[lx, y, lz] == AIR) return;
+
+        int newHP = entry.hp[lx, y, lz] - damage;
+        if (newHP <= 0)
+        {
+            entry.hp[lx, y, lz] = 0;
+            entry.data[lx, y, lz] = AIR;
+            entry.builder.Build(entry.data);
+        }
+        else entry.hp[lx, y, lz] = (short)newHP;
+    }
+
+    // === РџРЈР‘Р›РР§РќРћ: РїРѕСЃС‚Р°РІРёС‚СЊ Р±Р»РѕРє РІ РјРёСЂРµ (РїРѕ РјРёСЂРѕРІС‹Рј РёРЅРґРµРєСЃР°Рј) ===
+    public bool SetBlock(int wx, int wy, int wz, int blockType, bool rebuildChunk = true)
+    {
+        if (wx < 0 || wz < 0 || wy < 0 || wy >= VoxelChunk16.HEIGHT) return false;
+        if (wx >= chunksX * VoxelChunk16.WIDTH || wz >= chunksZ * VoxelChunk16.DEPTH) return false;
+
+        int cxi = wx / VoxelChunk16.WIDTH;
+        int czi = wz / VoxelChunk16.DEPTH;
+        int lx = wx % VoxelChunk16.WIDTH;
+        int lz = wz % VoxelChunk16.DEPTH;
+
+        if (!_chunks.TryGetValue((cxi, czi), out var entry)) return false;
+
+        // СЃС‚Р°РІРёРј С‚РѕР»СЊРєРѕ РІ РїСѓСЃС‚РѕС‚Сѓ
+        if (entry.data[lx, wy, lz] != -1) return false;
+
+        entry.data[lx, wy, lz] = blockType;
+        // hp: РјР°РєСЃРёРјСѓРј РґР»СЏ С‚РёРїР°
+        int maxHp = blockType switch { 0 => 5, 1 => 5, 2 => 8, 6 => 12, 7 => 12, _ => 6 };
+        entry.hp[lx, wy, lz] = (short)maxHp;
+
+        if (rebuildChunk) entry.builder.Build(entry.data);
+        return true;
+    }
+
+    // === РЈС‚РёР»РёС‚Р°: РїРѕСЃС‚Р°РІРёС‚СЊ Р±Р»РѕРє СЂСЏРґРѕРј СЃ СѓРґР°СЂРµРЅРЅРѕР№ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊСЋ ===
+    public bool PlaceAdjacent(RaycastHit hit, int blockType, float epsilon = 0.001f)
+    {
+        // 1) РЅРµРјРЅРѕРіРѕ СЃРјРµС‰Р°РµРј С‚РѕС‡РєСѓ РІРЅСѓС‚СЂСЊ СѓРґР°СЂРµРЅРЅРѕРіРѕ Р±Р»РѕРєР°
+        Vector3 pInside = hit.point - hit.normal * epsilon;
+
+        // 2) РёРЅРґРµРєСЃ СѓРґР°СЂРµРЅРЅРѕРіРѕ Р±Р»РѕРєР°
+        int bx = Mathf.FloorToInt(pInside.x);
+        int by = Mathf.FloorToInt(pInside.y);
+        int bz = Mathf.FloorToInt(pInside.z);
+
+        // 3) СЃРЅСЌРї РЅРѕСЂРјР°Р»Рё Рє РѕСЃРё (РёСЃРєР»СЋС‡Р°РµРј РєРѕСЃС‹Рµ Р·РЅР°С‡РµРЅРёСЏ Рё С€СѓРј float)
+        Vector3 n = hit.normal;
+        if (Mathf.Abs(n.x) >= Mathf.Abs(n.y) && Mathf.Abs(n.x) >= Mathf.Abs(n.z))
+            n = new Vector3(Mathf.Sign(n.x), 0, 0);
+        else if (Mathf.Abs(n.y) >= Mathf.Abs(n.x) && Mathf.Abs(n.y) >= Mathf.Abs(n.z))
+            n = new Vector3(0, Mathf.Sign(n.y), 0);
+        else
+            n = new Vector3(0, 0, Mathf.Sign(n.z));
+
+        int nx = (int)n.x, ny = (int)n.y, nz = (int)n.z;
+
+        // 4) С†РµР»РµРІРѕР№ (СЃРѕСЃРµРґРЅРёР№) РІРѕРєСЃРµР»СЊ СЃРѕ СЃС‚РѕСЂРѕРЅС‹ РЅРѕСЂРјР°Р»Рё
+        int tx = bx + nx;
+        int ty = by + ny;
+        int tz = bz + nz;
+
+        return SetBlock(tx, ty, tz, blockType, true);
     }
 }
