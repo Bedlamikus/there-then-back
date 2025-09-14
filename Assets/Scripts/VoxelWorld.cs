@@ -14,9 +14,8 @@ public class VoxelWorld : MonoBehaviour
     public bool generateColliders = true;
 
     [Header("Data generator")]
-    public VoxelWorldGenerator generator; // назначь в инспекторе
+    public VoxelWorldGenerator generator;
 
-    // типы
     const int AIR = -1;
     const int GRASS = 0;
     const int DIRT = 1;
@@ -27,8 +26,8 @@ public class VoxelWorld : MonoBehaviour
     public class ChunkEntry
     {
         public int cx, cz;
-        public int[,,] data;   // типы блоков
-        public short[,,] hp;   // текущие HP блоков
+        public int[,,] data;
+        public short[,,] hp;
         public VoxelChunk16 builder;
         public GameObject go;
     }
@@ -45,37 +44,70 @@ public class VoxelWorld : MonoBehaviour
     [ContextMenu("Generate world")]
     public void Generate()
     {
+        // 0) очистить старые чанки
         for (int i = transform.childCount - 1; i >= 0; i--) DestroyImmediate(transform.GetChild(i).gameObject);
         _chunks.Clear();
 
+        // 1) убедимся, что есть генератор данных
+        if (generator == null) generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
+
+        // 2) создать и заполнить чанки
         for (int cz = 0; cz < chunksZ; cz++)
             for (int cx = 0; cx < chunksX; cx++)
             {
+                // данные чанка
                 var data = generator.BuildChunkData(cx, cz);
+                var hp = AllocateHP(data);
 
+                // объект
                 var go = new GameObject($"Chunk({cx},{cz})");
                 go.transform.parent = transform;
                 go.transform.position = new Vector3(cx * VoxelChunk16.WIDTH, 0, cz * VoxelChunk16.DEPTH);
 
+                // билдер
                 var builder = go.AddComponent<VoxelChunk16>();
                 builder.atlasMaterial = atlasMaterial;
                 builder.generateCollider = generateColliders;
+
+                // ======= повреждения / HP =======
+                builder.hpData = hp;
+                builder.useDamageTiles = true;
+                builder.typeMaxHpLut = new int[256];
+                builder.typeMaxHpLut[0] = 5;   // трава/пыльный блок
+                builder.typeMaxHpLut[1] = 5;   // земля
+                builder.typeMaxHpLut[2] = 8;   // камень
+                builder.typeMaxHpLut[6] = 12;  // уголь
+                builder.typeMaxHpLut[7] = 12;  // золото
+
+                // ======= КАРТА ТИП → ТАЙЛ =======
+                // ВАЖНО: подставь индексы под свой атлас (10 на ряд, нумерация снизу-вверх).
+                builder.typeToTileIndex = new int[256];
+                builder.typeToTileIndex[0] = 0;  // пыльный блок (целый)
+                builder.typeToTileIndex[1] = 1;  // земля
+                builder.typeToTileIndex[2] = 2;  // камень (лунный)
+                builder.typeToTileIndex[6] = 6;  // уголь
+                builder.typeToTileIndex[7] = 7;  // золото
+                                                 // дефолт: пусть рендерится камнем, чтобы не было «всё травой»
+                for (int t = 0; t < builder.typeToTileIndex.Length; t++)
+                    if (t != 0 && t != 1 && t != 2 && t != 6 && t != 7)
+                        builder.typeToTileIndex[t] = 2;
+
+                // построить меш
                 builder.Build(data);
 
-                var entry = new ChunkEntry
+                // регистрация
+                _chunks[(cx, cz)] = new ChunkEntry
                 {
                     cx = cx,
                     cz = cz,
                     data = data,
-                    hp = AllocateHP(data),
+                    hp = hp,
                     builder = builder,
                     go = go
                 };
-                _chunks[(cx, cz)] = entry;
             }
     }
 
-    // ===== HP init =====
     short[,,] AllocateHP(int[,,] data)
     {
         int W = VoxelChunk16.WIDTH, H = VoxelChunk16.HEIGHT, D = VoxelChunk16.DEPTH;
@@ -90,16 +122,16 @@ public class VoxelWorld : MonoBehaviour
         return hp;
     }
 
-    int GetMaxHP(int blockType)
+    int GetMaxHP(int type)
     {
-        return blockType switch
+        return type switch
         {
             GRASS => 5,
             DIRT => 5,
             STONE => 8,
             COAL => 12,
             GOLD => 12,
-            _ => 6   // дефолт для неизвестных
+            _ => 6
         };
     }
 

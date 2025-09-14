@@ -1,202 +1,180 @@
-using System.Collections.Generic;
+п»їusing System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class VoxelChunk16 : MonoBehaviour
 {
-    public const int WIDTH = 16;   // X
-    public const int DEPTH = 16;   // Z
-    public const int HEIGHT = 128;  // Y
+    public const int WIDTH = 16;
+    public const int HEIGHT = 128;
+    public const int DEPTH = 16;
 
-    [Header("Atlas")]
     public Material atlasMaterial;
-    [Range(1, 32)] public int atlasCols = 10; // 10 => шаг UV = 0.1
-    public int[] typeToTileIndex = { 0, 1, 2, 3, 4, 5, 6, 7}; // 0=трава,1=земля,2=камень,3=песок,4=дерево
     public bool generateCollider = true;
 
-    static readonly Vector3[] FaceNormal = {
-        new( 0,  0,  1), // Front  Z+
-        new( 0,  0, -1), // Back   Z-
-        new( 0,  1,  0), // Top    Y+
-        new( 0, -1,  0), // Bottom Y-
-        new( 1,  0,  0), // Right  X+
-        new(-1,  0,  0), // Left   X-
-    };
+    // РєР°СЂС‚Р° СЃРѕРѕС‚РІРµС‚СЃС‚РІРёСЏ С‚РёРїРѕРІ в†’ Р±Р°Р·РѕРІС‹Р№ РёРЅРґРµРєСЃ С‚Р°Р№Р»Р° РІ Р°С‚Р»Р°СЃРµ
+    public int[] typeToTileIndex = new int[256];
 
-    static readonly Vector3[][] FaceVerts = {
-        new [] { new Vector3(0,0,1), new(1,0,1), new(1,1,1), new(0,1,1) }, // Z+
-        new [] { new Vector3(1,0,0), new(0,0,0), new(0,1,0), new(1,1,0) }, // Z-
-        new [] { new Vector3(0,1,1), new(1,1,1), new(1,1,0), new(0,1,0) }, // Y+
-        new [] { new Vector3(0,0,0), new(1,0,0), new(1,0,1), new(0,0,1) }, // Y-
-        new [] { new Vector3(1,0,1), new(1,0,0), new(1,1,0), new(1,1,1) }, // X+
-        new [] { new Vector3(0,0,0), new(0,0,1), new(0,1,1), new(0,1,0) }, // X-
-    };
+    // ===== РґР»СЏ РїРѕРІСЂРµР¶РґС‘РЅРЅС‹С… С‚Р°Р№Р»РѕРІ =====
+    public short[,,] hpData;                   // СЃСЃС‹Р»РєР° РЅР° HP-РјР°СЃСЃРёРІ РёР· VoxelWorld
+    public bool useDamageTiles = true;
+    public int damageStates = 5;               // 5 СЃРѕСЃС‚РѕСЏРЅРёР№ (0..4)
+    public int[] typeMaxHpLut = new int[256];  // max HP РїРѕ С‚РёРїР°Рј
 
-    static readonly int[] QuadTris = { 0, 1, 2, 0, 2, 3 };
-
+    // ===== РїСЂРёРІР°С‚РЅРѕРµ =====
     Mesh _mesh;
     MeshCollider _collider;
 
-    // Предкеш UV-тайла (u0,v0,u1,v1) на каждый тип блока
-    struct TileUV { public float u0, v0, u1, v1; }
-    TileUV[] _tileUVCache;
-    float TileSize => 1f / atlasCols;
+    // РїРѕРґРіРѕС‚РѕРІР»РµРЅРЅС‹Рµ UV-РєРѕРѕСЂРґРёРЅР°С‚С‹ (РєРµС€ РЅР° РєР°Р¶РґС‹Р№ tileIndex)
+    static readonly Dictionary<int, Vector2[]> uvCache = new();
+    const int atlasCols = 10; // Сѓ С‚РµР±СЏ Р°С‚Р»Р°СЃ 10x10
 
-    // Вспомогательная функция: плоский индекс
-    static int Idx(int x, int y, int z) => x + z * WIDTH + y * WIDTH * DEPTH;
-
-    /// <summary>
-    /// Строит меш по 3D-массиву типов. -1 = пусто.
-    /// Ожидает массив размером [16,128,16] или [WIDTH,HEIGHT,DEPTH].
-    /// </summary>
     public void Build(int[,,] data)
     {
-        // базовые проверки
-        if (data.GetLength(0) != WIDTH || data.GetLength(1) != HEIGHT || data.GetLength(2) != DEPTH)
-        {
-            Debug.LogError($"Неверный размер массива. Ожидается [{WIDTH},{HEIGHT},{DEPTH}] (X,Y,Z).");
-            return;
-        }
-
         if (_mesh == null)
         {
-            _mesh = new Mesh { name = "VoxelChunk16" };
+            _mesh = new Mesh();
             _mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            GetComponent<MeshFilter>().mesh = _mesh;
+            GetComponent<MeshRenderer>().material = atlasMaterial;
         }
 
-        // Предкеш UV для каждого встречающегося типа
-        PrepareTileUvCache();
-
-        // Оценим верхнюю границу по числу граней (грубая) и предвыделим память
-        // Средняя заполняемость обычно < 50%, так что с запасом.
-        int capacityVerts = WIDTH * HEIGHT * DEPTH * 12; // 2 треугольника * 3 вершины * коеф. редукции
-        var verts = new List<Vector3>(capacityVerts);
-        var uvs = new List<Vector2>(capacityVerts);
-        var norms = new List<Vector3>(capacityVerts);
-        var tris = new List<int>(capacityVerts * 3 / 2);
-
-        // локальный метод: проверка твёрдого блока
-        bool IsSolid(int x, int y, int z)
+        if (_collider == null && generateCollider)
         {
-            if (x < 0 || y < 0 || z < 0 || x >= WIDTH || y >= HEIGHT || z >= DEPTH) return false;
-            return data[x, y, z] >= 0;
+            _collider = gameObject.GetComponent<MeshCollider>();
+            if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
         }
 
-        // Основной цикл
-        for (int y = 0; y < HEIGHT; y++)
-            for (int z = 0; z < DEPTH; z++)
-                for (int x = 0; x < WIDTH; x++)
+        var verts = new List<Vector3>();
+        var tris = new List<int>();
+        var uvs = new List<Vector2>();
+
+        for (int x = 0; x < WIDTH; x++)
+            for (int y = 0; y < HEIGHT; y++)
+                for (int z = 0; z < DEPTH; z++)
                 {
                     int type = data[x, y, z];
-                    if (type < 0) continue;
+                    if (type == -1) continue;
 
-                    // UV-границы тайла
-                    var tu = GetTileUV(type);
+                    // --- Р·РґРµСЃСЊ СЂРµС€Р°РµРј РёРЅРґРµРєСЃ С‚Р°Р№Р»Р° (СЃ СѓС‡С‘С‚РѕРј РїРѕРІСЂРµР¶РґРµРЅРёР№) ---
+                    int tileIndex = GetTileIndexWithDamage(type, x, y, z);
 
-                    // Проверяем шесть соседей; если сосед пуст — добавляем соответствующую грань
-                    // порядок граней: Z+, Z-, Y+, Y-, X+, X-
-                    // соседние координаты:
-                    // Z+: (x,y,z+1), Z-: (x,y,z-1), Y+: (x,y+1,z), Y-: (x,y-1,z), X+: (x+1,y,z), X-: (x-1,y,z)
-                    // на границе чанка считаем соседа пустым (грань видна)
-                    // если будете стыковать чанки, замените проверку на просмотр соседнего чанка.
-                    // -------------------------------------------
-                    // Z+
-                    if (!IsSolid(x, y, z + 1)) AddFace(0, x, y, z, tu, verts, uvs, norms, tris);
-                    // Z-
-                    if (!IsSolid(x, y, z - 1)) AddFace(1, x, y, z, tu, verts, uvs, norms, tris);
-                    // Y+
-                    if (!IsSolid(x, y + 1, z)) AddFace(2, x, y, z, tu, verts, uvs, norms, tris);
-                    // Y-
-                    if (!IsSolid(x, y - 1, z)) AddFace(3, x, y, z, tu, verts, uvs, norms, tris);
-                    // X+
-                    if (!IsSolid(x + 1, y, z)) AddFace(4, x, y, z, tu, verts, uvs, norms, tris);
-                    // X-
-                    if (!IsSolid(x - 1, y, z)) AddFace(5, x, y, z, tu, verts, uvs, norms, tris);
+                    // СЃРѕСЃРµРґРЅРёРµ Р±Р»РѕРєРё
+                    for (int face = 0; face < 6; face++)
+                    {
+                        Vector3Int dir = VoxelData.dirs[face];
+                        int nx = x + dir.x;
+                        int ny = y + dir.y;
+                        int nz = z + dir.z;
+
+                        bool neighborSolid =
+                            nx >= 0 && nx < WIDTH &&
+                            ny >= 0 && ny < HEIGHT &&
+                            nz >= 0 && nz < DEPTH &&
+                            data[nx, ny, nz] != -1;
+
+                        if (!neighborSolid)
+                        {
+                            int vIndex = verts.Count;
+
+                            for (int i = 0; i < 4; i++)
+                                verts.Add(new Vector3(x, y, z) + VoxelData.faceVerts[face, i]);
+
+                            tris.Add(vIndex + 0);
+                            tris.Add(vIndex + 1);
+                            tris.Add(vIndex + 2);
+                            tris.Add(vIndex + 2);
+                            tris.Add(vIndex + 1);
+                            tris.Add(vIndex + 3);
+
+                            var faceUvs = GetTileUvs(tileIndex);
+                            uvs.AddRange(faceUvs);
+                        }
+                    }
                 }
 
-        // Заливка в Mesh
         _mesh.Clear();
         _mesh.SetVertices(verts);
-        _mesh.SetTriangles(tris, 0, true);
-        _mesh.SetNormals(norms);
+        _mesh.SetTriangles(tris, 0);
         _mesh.SetUVs(0, uvs);
-        _mesh.RecalculateBounds();
+        _mesh.RecalculateNormals();
 
-        GetComponent<MeshFilter>().sharedMesh = _mesh;
-        var mr = GetComponent<MeshRenderer>();
-        if (mr.sharedMaterial != atlasMaterial) mr.sharedMaterial = atlasMaterial;
-
-        if (generateCollider)
+        if (generateCollider && _collider != null)
         {
-            if (_collider == null)
-            {
-                _collider = gameObject.GetComponent<MeshCollider>();
-                if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
-            }
-
-            _collider.sharedMesh = null; // форс обновление
+            _collider.sharedMesh = null;
             _collider.sharedMesh = _mesh;
         }
     }
 
-    // ==== вспомогалки ====
+    // ===== Helpers =====
 
-    void PrepareTileUvCache()
+    int GetTileIndexWithDamage(int type, int x, int y, int z)
     {
-        if (_tileUVCache == null || _tileUVCache.Length != typeToTileIndex.Length)
-            _tileUVCache = new TileUV[typeToTileIndex.Length];
+        int baseIndex = (type >= 0 && type < typeToTileIndex.Length) ? typeToTileIndex[type] : 0;
 
-        float step = TileSize;
-        for (int i = 0; i < typeToTileIndex.Length; i++)
+        if (!useDamageTiles || hpData == null) return baseIndex;
+
+        int maxHp = (type >= 0 && type < typeMaxHpLut.Length) ? typeMaxHpLut[type] : 0;
+        if (maxHp <= 0) return baseIndex;
+
+        int curHp = Mathf.Clamp(hpData[x, y, z], 0, maxHp);
+        float ratio = (float)curHp / maxHp;
+
+        int state;
+        if (ratio >= 0.80f) state = 0;
+        else if (ratio >= 0.50f) state = 1;
+        else if (ratio >= 0.35f) state = 2;
+        else if (ratio >= 0.20f) state = 3;
+        else state = 4;
+
+        return baseIndex + state * atlasCols;
+    }
+
+    Vector2[] GetTileUvs(int tileIndex)
+    {
+        if (uvCache.TryGetValue(tileIndex, out var cached)) return cached;
+
+        int tx = tileIndex % atlasCols;
+        int ty = tileIndex / atlasCols;
+
+        float uvSize = 1f / atlasCols;
+        float eps = 0.001f;
+
+        float u0 = tx * uvSize + eps;
+        float v0 = ty * uvSize + eps;
+        float u1 = (tx + 1) * uvSize - eps;
+        float v1 = (ty + 1) * uvSize - eps;
+
+        var uv = new Vector2[4]
         {
-            int tile = (i >= 0 && i < typeToTileIndex.Length) ? typeToTileIndex[i] : 0;
-            int uIdx = tile % atlasCols;
-            int vIdx = tile / atlasCols;
+            new Vector2(u0, v0),
+            new Vector2(u1, v0),
+            new Vector2(u0, v1),
+            new Vector2(u1, v1)
+        };
 
-            // лёгкое «сжатие» UV внутрь тайла, чтобы избежать мип-кровотечения
-            const float eps = 0.001f;
-            float u0 = uIdx * step + eps;
-            float v0 = vIdx * step + eps;
-            float u1 = (uIdx + 1) * step - eps;
-            float v1 = (vIdx + 1) * step - eps;
-
-            _tileUVCache[i] = new TileUV { u0 = u0, v0 = v0, u1 = u1, v1 = v1 };
-        }
+        uvCache[tileIndex] = uv;
+        return uv;
     }
+}
 
-    TileUV GetTileUV(int type)
-    {
-        if (type < 0 || type >= _tileUVCache.Length) return _tileUVCache[0];
-        return _tileUVCache[type];
-    }
+// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РіСЂР°РЅРµР№ РєСѓР±Р°
+public static class VoxelData
+{
+    public static readonly Vector3Int[] dirs = {
+        new Vector3Int( 1, 0, 0),
+        new Vector3Int(-1, 0, 0),
+        new Vector3Int( 0, 1, 0),
+        new Vector3Int( 0,-1, 0),
+        new Vector3Int( 0, 0, 1),
+        new Vector3Int( 0, 0,-1)
+    };
 
-    void AddFace(
-        int faceIndex, int x, int y, int z, TileUV tu,
-        List<Vector3> verts, List<Vector2> uvs, List<Vector3> norms, List<int> tris)
-    {
-        int baseIndex = verts.Count;
-        var fv = FaceVerts[faceIndex];
-
-        verts.Add(new Vector3(x, y, z) + fv[0]);
-        verts.Add(new Vector3(x, y, z) + fv[1]);
-        verts.Add(new Vector3(x, y, z) + fv[2]);
-        verts.Add(new Vector3(x, y, z) + fv[3]);
-
-        // плоские нормали
-        Vector3 n = FaceNormal[faceIndex];
-        norms.Add(n); norms.Add(n); norms.Add(n); norms.Add(n);
-
-        // UV в порядке вершин fv
-        uvs.Add(new Vector2(tu.u0, tu.v0));
-        uvs.Add(new Vector2(tu.u1, tu.v0));
-        uvs.Add(new Vector2(tu.u1, tu.v1));
-        uvs.Add(new Vector2(tu.u0, tu.v1));
-
-        tris.Add(baseIndex + QuadTris[0]);
-        tris.Add(baseIndex + QuadTris[1]);
-        tris.Add(baseIndex + QuadTris[2]);
-        tris.Add(baseIndex + QuadTris[3]);
-        tris.Add(baseIndex + QuadTris[4]);
-        tris.Add(baseIndex + QuadTris[5]);
-    }
+    public static readonly Vector3[,] faceVerts = {
+        { new Vector3(1,0,0), new Vector3(1,1,0), new Vector3(1,0,1), new Vector3(1,1,1) }, // +X
+        { new Vector3(0,0,0), new Vector3(0,0,1), new Vector3(0,1,0), new Vector3(0,1,1) }, // -X
+        { new Vector3(0,1,0), new Vector3(0,1,1), new Vector3(1,1,0), new Vector3(1,1,1) }, // +Y
+        { new Vector3(0,0,0), new Vector3(1,0,0), new Vector3(0,0,1), new Vector3(1,0,1) }, // -Y
+        { new Vector3(0,0,1), new Vector3(1,0,1), new Vector3(0,1,1), new Vector3(1,1,1) }, // +Z
+        { new Vector3(0,0,0), new Vector3(0,1,0), new Vector3(1,0,0), new Vector3(1,1,0) }  // -Z
+    };
 }
