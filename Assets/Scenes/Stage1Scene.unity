@@ -833,6 +833,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1766461110}
   - component: {fileID: 1766461109}
+  - component: {fileID: 1766461111}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -863,18 +864,16 @@ MonoBehaviour:
   baseHeight: 64
   grassThicknessScale: 24
   dirtThicknessScale: 36
-  atlasMaterial: {fileID: 2100000, guid: 6f595d1f964b923478fe0c7c291c547a, type: 2}
-  generateColliders: 1
   enableCaves: 1
   caveScale: 30
   caveOctaves: 1
   cavePersistence: 0.52
   caveLacunarity: 2
+  caveTwist: 0.25
+  caveMidHeight01: 0.55
   caveThresholdBottom: 0.6
   caveThresholdMid: 0.58
   caveThresholdTop: 0.64
-  caveMidHeight01: 0.55
-  caveTwist: 0.25
 --- !u!4 &1766461110
 Transform:
   m_ObjectHideFlags: 0
@@ -890,6 +889,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1766461111
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1766461108}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d9ef42c58e7259a478e9bc0f7e723aea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  chunksX: 5
+  chunksZ: 5
+  atlasMaterial: {fileID: 2100000, guid: 6f595d1f964b923478fe0c7c291c547a, type: 2}
+  generateColliders: 1
+  generator: {fileID: 1766461109}
 --- !u!1 &1817359138
 GameObject:
   m_ObjectHideFlags: 0
