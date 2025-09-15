@@ -41,6 +41,11 @@ public class VoxelWorld : MonoBehaviour
         if (generator == null) generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
     }
 
+    private void Start()
+    {
+        Generate();
+    }
+
     [ContextMenu("Generate world")]
     public void Generate()
     {
