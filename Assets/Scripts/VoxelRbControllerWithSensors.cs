@@ -5,322 +5,223 @@ using UnityEngine;
 [RequireComponent(typeof(CapsuleCollider))]
 public class VoxelRbControllerWithSensors : MonoBehaviour
 {
-    [Header("References")]
-    public Transform cameraPivot; // направление WASD берём по yaw камеры
-
-    [Tooltip("Сенсор спереди (локально +Z), на +1 юнит выше, isTrigger CapsuleCollider r=0.5,h=2,center=(0,0.5,0)")]
+    [Header("Refs")]
+    [Tooltip("Пивот/камера, чей Yaw задаёт направление WASD")]
+    public Transform cameraPivot;
+    [Tooltip("Сенсор на высоте +1, смотрит вперёд, даёт IsBlocked")]
     public StepSensor sensorForward;
-    [Tooltip("Сенсор сзади (локально -Z)")]
-    public StepSensor sensorBack;
-    [Tooltip("Сенсор слева (локально -X)")]
-    public StepSensor sensorLeft;
-    [Tooltip("Сенсор справа (локально +X)")]
-    public StepSensor sensorRight;
 
-    [Tooltip("Маска твёрдых блоков/земли (игрок не должен входить).")]
-    public LayerMask solidMask = ~0;
-
-    [Header("Capsule (для кастов вперёд)")]
-    public float capsuleRadius = 0.5f;  // = CapsuleCollider.radius
-    public float capsuleHeight = 2.0f;  // = CapsuleCollider.height
-    public Vector3 capsuleCenter = new Vector3(0, 0.5f, 0); // как на коллайдере
+    [Header("Layers & Probes")]
+    [Tooltip("Слои вокселей/препятствий")]
+    public LayerMask obstacleMask = ~0;
+    [Tooltip("Слой земли (можно тот же, что obstacleMask)")]
+    public LayerMask groundMask = ~0;
+    [Tooltip("Дистанция проверки упора перед ногами для шага/скольжения")]
+    public float stepProbeDistance = 0.6f;
+    [Tooltip("Радиус нижней сферы для проверки упора")]
+    public float footProbeRadius = 0.25f;
+    [Tooltip("Вертикальный сдвиг зонда ног от низа капсулы")]
+    public float footProbeLift = 0.05f;
 
     [Header("Move")]
+    [Tooltip("Целевая горизонтальная скорость")]
     public float moveSpeed = 6f;
-    public float acceleration = 30f;      // разгон по плоскости
-    public float airControl = 0.5f;       // управление в воздухе (0..1)
-    public float rotateToCameraYaw = 720f;// скорость поворота yaw к камере (0 — не крутить)
+    [Tooltip("Разгон до целевой скорости (ускорение)")]
+    public float acceleration = 30f;
+    [Range(0f, 1f)]
+    [Tooltip("Контроль в воздухе (0..1)")]
+    public float airControl = 0.5f;
+    [Tooltip("Скорость поворота yaw к камере (0 — не крутить)")]
+    public float rotateToCameraYaw = 720f;
 
     [Header("Step Up")]
-    [Tooltip("Высота подъёма (воксель).")]
-    public float stepHeight = 1f;         // по условию
-    [Tooltip("Насколько выносим вперёд при подъёме, чтобы не сорваться назад.")]
+    [Tooltip("Высота подъёма (воксель)")]
+    public float stepHeight = 1f;
+    [Tooltip("Насколько выносим вперёд при подъёме, чтобы не скатиться")]
     public float stepForwardNudge = 0.15f;
-    [Tooltip("Длительность плавного подъёма (сек). 0 — телепорт.")]
+    [Tooltip("Длительность плавного подъёма (сек). 0 — телепорт")]
     public float stepLiftDuration = 0.08f;
 
-    [Header("Ground")]
-    public float groundCheckDistance = 0.12f; // 0.1–0.15 под твои размеры ок
-    public float coyoteTime = 0.1f;
-    public float jumpSpeed = 6.5f;
-
-    [Header("Debug")]
-    public bool drawDebug;
-
+    // internal
+    Vector2 _rawInput;
     Rigidbody _rb;
-    CapsuleCollider _cap;
-    bool _controlEnabled = true;
-    bool _stepping;
-    bool _grounded;
-    float _lastGroundTime;
-    Vector2 _rawInput; // WASD
+    CapsuleCollider _capsule;
+    bool _isStepping;
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        _cap = GetComponent<CapsuleCollider>();
-
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
-        _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        _rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+        _rb.constraints = RigidbodyConstraints.FreezeRotation;
 
-        // подстрахуем значения по умолчанию под твой CapsuleCollider
-        capsuleRadius = _cap.radius;
-        capsuleHeight = _cap.height;
-        capsuleCenter = _cap.center;
+        _capsule = GetComponent<CapsuleCollider>();
     }
 
     void Update()
     {
-        // ввод
+        // Ввод WASD
         _rawInput.x = (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f);
         _rawInput.y = (Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f);
         if (_rawInput.sqrMagnitude > 1f) _rawInput.Normalize();
 
-        if (Input.GetKeyDown(KeyCode.Space)) TryJump();
+        // Поворот к yaw камеры (только по Y)
+        if (rotateToCameraYaw > 0f && cameraPivot != null)
+        {
+            var camYaw = Quaternion.Euler(0f, cameraPivot.rotation.eulerAngles.y, 0f);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                camYaw,
+                rotateToCameraYaw * Time.deltaTime
+            );
+        }
     }
 
     void FixedUpdate()
     {
-        if (!cameraPivot) return;
+        // 1) Камера-относительное движение на плоскости XZ
+        Vector3 moveDir = GetCameraRelativeMoveOnPlane(_rawInput, out Vector3 facingDir);
+        bool grounded = CheckGrounded();
 
-        float dt = Time.fixedDeltaTime;
-
-        // Повернём игрока по yaw камеры (опционально)
-        if (rotateToCameraYaw > 0.01f)
+        // 2) Проверка упора "перед ногами" для шага/антизалипания
+        bool lowHit = false;
+        RaycastHit hit = new RaycastHit();
         {
-            Vector3 camF = cameraPivot.forward; camF.y = 0; if (camF.sqrMagnitude > 1e-4f) camF.Normalize();
-            if (camF.sqrMagnitude > 0.5f)
-            {
-                Quaternion want = Quaternion.LookRotation(camF, Vector3.up);
-                transform.rotation = Quaternion.RotateTowards(transform.rotation, want, rotateToCameraYaw * dt);
-            }
+            float bottomY = transform.position.y + _capsule.center.y - _capsule.height * 0.5f + _capsule.radius;
+            Vector3 footCenter = new Vector3(transform.position.x, bottomY + footProbeLift, transform.position.z);
+            lowHit = Physics.SphereCast(
+                footCenter,
+                footProbeRadius,
+                facingDir == Vector3.zero ? transform.forward : facingDir, // на случай нулевого ввода
+                out hit,
+                stepProbeDistance,
+                obstacleMask,
+                QueryTriggerInteraction.Ignore
+            );
         }
 
-        GroundCheck();
-
-        // управление отключено во время шага
-        if (!_controlEnabled) return;
-
-        // Камерное направление ввода
-        Vector3 camForward = cameraPivot.forward; camForward.y = 0; camForward.Normalize();
-        Vector3 camRight = cameraPivot.right; camRight.y = 0; camRight.Normalize();
-
-        Vector3 wishDir = (camForward * _rawInput.y + camRight * _rawInput.x);
-        if (wishDir.sqrMagnitude > 1e-6f) wishDir.Normalize();
-
-        // 1) Если впереди препятствие — пробуем шагнуть через сенсор
-        if (_grounded && wishDir.sqrMagnitude > 1e-6f && !_stepping)
+        // 3) WALL SLIDE / ANTI-STICK:
+        // если упёрлись и сенсор запрещает шаг — скользим вдоль стены и не давим внутрь
+        if (lowHit && sensorForward != null && sensorForward.IsBlocked)
         {
-            // проверяем, заблокирован ли ближайший путь капсульным кастом вперёд
-            if (BlockedAhead(wishDir, out RaycastHit hit))
-            {
-                // какой сенсор соответствует этому направлению?
-                StepSensor dirSensor = PickSensorForDirection(wishDir);
+            Vector3 n = hit.normal;
 
-                // если наверху свободно — запускаем подъём
-                if (dirSensor != null && !dirSensor.IsBlocked)
-                {
-                    StartCoroutine(StepUpRoutine(wishDir));
-                    return;
-                }
-                else
-                {
-                    // наверху занято — режем вектор: убираем компонент вдоль заблокированного направления
-                    wishDir = CutDirectionComponent(wishDir, hit.normal);
-                    // если почти ноль — стоим
-                    if (wishDir.sqrMagnitude < 1e-4f) wishDir = Vector3.zero;
-                }
+            // убрать текущую горизонтальную скорость "в стену"
+            Vector3 vel = _rb.velocity;
+            Vector3 horizVel = Vector3.ProjectOnPlane(vel, Vector3.up);
+            float into = Vector3.Dot(horizVel, -n); // положительно, если летим в стену
+            if (into > 0f)
+            {
+                _rb.velocity = vel + n * into; // гасим компоненту в стену
             }
+
+            // проецируем ввод на плоскость стены — скольжение вдоль препятствия
+            Vector3 slidDir = Vector3.ProjectOnPlane(moveDir, n);
+            moveDir = slidDir.sqrMagnitude > 1e-6f ? slidDir.normalized : Vector3.zero;
         }
 
-        // 2) Движение по плоскости (скорость к целевой)
-        Vector3 vel = _rb.velocity;
-        Vector3 horizVel = new Vector3(vel.x, 0, vel.z);
-        Vector3 target = wishDir * moveSpeed;
-        float accel = _grounded ? acceleration : acceleration * Mathf.Clamp01(airControl);
-        horizVel = Vector3.MoveTowards(horizVel, target, accel * dt);
-        _rb.velocity = new Vector3(horizVel.x, vel.y, horizVel.z);
-    }
+        // 4) Разгон к целевой скорости AddForce (по плоскости)
+        Vector3 vNow = _rb.velocity;
+        Vector3 vHoriz = Vector3.ProjectOnPlane(vNow, Vector3.up);
+        Vector3 desired = moveDir * moveSpeed;
+        float ctrl = grounded ? 1f : airControl;
 
-    // --- Шаг вверх ---
-    IEnumerator StepUpRoutine(Vector3 worldDir)
-    {
-        _stepping = true;
-        _controlEnabled = false;
-
-        // временно отключим физику, чтобы переместить безопасно
-        bool oldKinematic = _rb.isKinematic;
-        _rb.isKinematic = true;
-
-        Vector3 start = transform.position;
-        Vector3 dest = start + Vector3.up * stepHeight + worldDir.normalized * stepForwardNudge;
-
-        // финальная проверка на свободное место капсулой (подстраховка)
-        if (!CapsuleFreeAtWorld(dest))
+        if (lowHit && sensorForward != null && sensorForward.IsBlocked && desired.sqrMagnitude < 1e-6f)
         {
-            // попытка чуть сдвинуться назад (если край занят)
-            Vector3 fallback = start + Vector3.up * stepHeight;
-            if (!CapsuleFreeAtWorld(fallback))
-            {
-                // никуда нельзя — отмена шага
-                _rb.isKinematic = oldKinematic;
-                _controlEnabled = true;
-                _stepping = false;
-                yield break;
-            }
-            dest = fallback;
-        }
-
-        if (stepLiftDuration <= 0.001f)
-        {
-            transform.position = dest;
+            // Нет слайда — слегка демпфируем горизонт, чтобы быстро "отпускало" от стены
+            _rb.AddForce(-vHoriz * (acceleration * 0.5f), ForceMode.Acceleration);
         }
         else
         {
-            float t = 0f;
-            while (t < stepLiftDuration)
+            Vector3 accel = (desired - vHoriz) * (acceleration * ctrl);
+            _rb.AddForce(accel, ForceMode.Acceleration);
+        }
+
+        // 5) Шаг на воксель (телепорт/плавно) — только если упёрлись и сенсор свободен
+        if (!_isStepping && grounded && moveDir.sqrMagnitude > 0.0001f)
+        {
+            if (lowHit && sensorForward != null && !sensorForward.IsBlocked)
             {
-                t += Time.fixedDeltaTime;
-                float k = Mathf.Clamp01(t / stepLiftDuration);
-                transform.position = Vector3.Lerp(start, dest, k);
+                Vector3 stepForward = GetFacingFromMove(moveDir);
+                Vector3 stepDelta = Vector3.up * stepHeight + stepForward * stepForwardNudge;
+
+                // убрать возможное прижатие вниз перед подъёмом
+                if (_rb.velocity.y < 0f)
+                {
+                    Vector3 v = _rb.velocity; v.y = 0f; _rb.velocity = v;
+                }
+
+                StartCoroutine(DoStepLift(stepDelta));
+            }
+        }
+    }
+
+    Vector3 GetCameraRelativeMoveOnPlane(Vector2 input, out Vector3 facingDir)
+    {
+        if (cameraPivot == null)
+        {
+            var m = new Vector3(input.x, 0f, input.y);
+            if (m.sqrMagnitude > 1f) m.Normalize();
+            facingDir = m.sqrMagnitude > 0f ? m : transform.forward;
+            return m;
+        }
+
+        Vector3 fwd = cameraPivot.forward; fwd.y = 0f; fwd.Normalize();
+        Vector3 right = cameraPivot.right; right.y = 0f; right.Normalize();
+
+        Vector3 move = right * input.x + fwd * input.y;
+        if (move.sqrMagnitude > 1f) move.Normalize();
+
+        facingDir = move.sqrMagnitude > 0.0001f ? move : fwd;
+        return move;
+    }
+
+    bool CheckGrounded()
+    {
+        // короткий сферакаст вниз от низа капсулы
+        float bottomY = transform.position.y + _capsule.center.y - _capsule.height * 0.5f + _capsule.radius;
+        Vector3 start = new Vector3(transform.position.x, bottomY + 0.02f, transform.position.z);
+        return Physics.SphereCast(
+            start,
+            _capsule.radius * 0.95f,
+            Vector3.down,
+            out _,
+            0.06f,
+            groundMask,
+            QueryTriggerInteraction.Ignore
+        );
+    }
+
+    IEnumerator DoStepLift(Vector3 worldDelta)
+    {
+        _isStepping = true;
+
+        if (stepLiftDuration <= 0f)
+        {
+            _rb.position += worldDelta; // мгновенный подъём
+        }
+        else
+        {
+            Vector3 start = _rb.position;
+            Vector3 end = start + worldDelta;
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.fixedDeltaTime / stepLiftDuration;
+                _rb.MovePosition(Vector3.Lerp(start, end, Mathf.SmoothStep(0f, 1f, t)));
                 yield return new WaitForFixedUpdate();
             }
-            transform.position = dest;
+            _rb.MovePosition(end);
         }
 
-        _rb.isKinematic = oldKinematic;
-
-        // сброс нежелательной вертикальной скорости
-        if (_rb.velocity.y < 0f)
-        {
-            var v = _rb.velocity; v.y = 0f; _rb.velocity = v;
-        }
-
-        // маленький снэп вниз, чтобы точно встать на плоскость
-        SnapDownSmall();
-
-        _controlEnabled = true;
-        _stepping = false;
+        _isStepping = false;
     }
 
-    // --- Проверки и утилиты ---
-    bool BlockedAhead(Vector3 dir, out RaycastHit hit)
+    // Вспомогалка: получить «вперёд» из moveDir, fallback — forward персонажа/мир Z+
+    Vector3 GetFacingFromMove(Vector3 moveDir)
     {
-        // капсульный каст вперёд на небольшую дистанцию (радиус + небольшой шаг)
-        float probe = capsuleRadius + 0.1f;
-        GetCapsuleEnds(out Vector3 a, out Vector3 b, out float r);
-        return Physics.CapsuleCast(a, b, r, dir, out hit, probe, solidMask, QueryTriggerInteraction.Ignore);
-    }
-
-    StepSensor PickSensorForDirection(Vector3 worldDir)
-    {
-        // выбираем сенсор по доминирующему направлению в системе игрока (после поворота к камере это совпадает)
-        Vector3 f = transform.forward; f.y = 0; f.Normalize();
-        Vector3 r = transform.right; r.y = 0; r.Normalize();
-
-        float df = Vector3.Dot(worldDir, f);
-        float dr = Vector3.Dot(worldDir, r);
-
-        if (Mathf.Abs(df) >= Mathf.Abs(dr))
-            return (df >= 0f) ? sensorForward : sensorBack;
-        else
-            return (dr >= 0f) ? sensorRight : sensorLeft;
-    }
-
-    Vector3 CutDirectionComponent(Vector3 wishDir, Vector3 hitNormal)
-    {
-        // Проецируем желаемый вектор на плоскость стены, чтобы «соскользнуть» вдоль
-        Vector3 slide = Vector3.ProjectOnPlane(wishDir, hitNormal);
-        // Если слайд очень маленький — стоп
-        if (slide.sqrMagnitude < 1e-4f) return Vector3.zero;
-        return slide.normalized;
-    }
-
-    void TryJump()
-    {
-        if (!_controlEnabled) return;
-
-        bool can = _grounded || (Time.time - _lastGroundTime) <= coyoteTime;
-        if (!can) return;
-
-        var v = _rb.velocity; v.y = jumpSpeed; _rb.velocity = v;
-        _grounded = false;
-    }
-
-    void GroundCheck()
-    {
-        _grounded = false;
-
-        GetCapsuleEnds(out Vector3 a, out Vector3 b, out float r);
-        if (Physics.CapsuleCast(a, b, r * 0.98f, Vector3.down,
-            out RaycastHit h, groundCheckDistance, solidMask, QueryTriggerInteraction.Ignore))
-        {
-            _grounded = true;
-            _lastGroundTime = Time.time;
-
-            // микроснап вниз, если висим в щёлочке
-            float d = h.distance - 0.02f;
-            if (d > 0f && d < groundCheckDistance)
-                _rb.MovePosition(_rb.position + Vector3.down * d);
-
-            // убираем отрицательную вертикаль при касании
-            if (_rb.velocity.y < 0f)
-            {
-                var v = _rb.velocity; v.y = 0f; _rb.velocity = v;
-            }
-        }
-    }
-
-    void SnapDownSmall()
-    {
-        // с верхней точки капсулы луч вниз на stepHeight + запас
-        float half = Mathf.Max(0f, capsuleHeight * 0.5f - capsuleRadius);
-        Vector3 center = transform.TransformPoint(capsuleCenter);
-        Vector3 top = center + Vector3.up * (half - 0.01f);
-
-        if (Physics.Raycast(top, Vector3.down, out RaycastHit h, stepHeight + 0.4f, solidMask, QueryTriggerInteraction.Ignore))
-        {
-            float targetCenterY = h.point.y + capsuleRadius + (capsuleCenter.y - capsuleRadius);
-            Vector3 pos = transform.position;
-            pos.y = targetCenterY - capsuleCenter.y; // перевести центр в позицию
-            transform.position = pos;
-        }
-    }
-
-    bool CapsuleFreeAtWorld(Vector3 worldPosition)
-    {
-        // проверяем наше положение, если центр капсулы будет в worldPosition (в координатах мира)
-        Vector3 oldPos = transform.position;
-        // посчитать концы капсулы для гипотетического центра
-        Vector3 centerWorld = worldPosition + (transform.rotation * capsuleCenter - (transform.rotation * capsuleCenter));
-        // проще: возьмём ends, но сдвинем их по разнице позиции
-        GetCapsuleEnds(out Vector3 a, out Vector3 b, out float r);
-        Vector3 delta = worldPosition - oldPos;
-        a += delta; b += delta;
-
-        return !Physics.CheckCapsule(a, b, r - 0.01f, solidMask, QueryTriggerInteraction.Ignore);
-    }
-
-    void GetCapsuleEnds(out Vector3 a, out Vector3 b, out float r)
-    {
-        r = capsuleRadius;
-        float half = Mathf.Max(0f, capsuleHeight * 0.5f - r);
-
-        // ось Y в мировых, центр — как на коллайдере
-        Vector3 centerWorld = transform.TransformPoint(capsuleCenter);
-        Vector3 axisWorld = transform.up;
-        a = centerWorld + axisWorld * (+half);
-        b = centerWorld + axisWorld * (-half);
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        if (!drawDebug) return;
-        Gizmos.color = Color.cyan;
-        GetCapsuleEnds(out var a, out var b, out var r);
-        Gizmos.DrawWireSphere(a, r);
-        Gizmos.DrawWireSphere(b, r);
-        Gizmos.DrawLine(a, b);
+        if (moveDir.sqrMagnitude > 1e-6f) return moveDir.normalized;
+        var fwd = transform.forward; fwd.y = 0f;
+        if (fwd.sqrMagnitude > 1e-6f) return fwd.normalized;
+        return Vector3.forward;
     }
 }
