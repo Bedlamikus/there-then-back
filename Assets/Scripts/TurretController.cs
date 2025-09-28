@@ -17,19 +17,18 @@ public class TurretController : MonoBehaviour
     [Header("Weapon Limits")]
     public float minWeaponAngle = -30f;           // Минимальный угол подъема оружия
     public float maxWeaponAngle = 60f;            // Максимальный угол подъема оружия
-    public float weaponAngleCorrection = 90f;     // Корректировка угла оружия (градусы)
+    public float weaponAngleCorrection = 0f;      // Корректировка начального угла оружия (градусы)
     
-    [Header("Target Settings")]
-    public float targetUpdateRate = 30f;          // Частота обновления цели (раз в секунду)
-    public float aimThreshold = 1f;               // Порог точности прицеливания (градусы)
+    [Header("Joystick Control")]
+    public float joystickSensitivity = 1f;       // Чувствительность джойстика
+    public float maxRotationSpeed = 180f;         // Максимальная скорость вращения (градусы/сек)
     
     [Header("Smoothing")]
     public float smoothingFactor = 0.1f;           // Фактор сглаживания (0.01-0.5, меньше = плавнее)
     public float minMovementThreshold = 0.5f;      // Минимальный порог движения для обновления (градусы)
     
-    private Vector3 currentTargetPosition;       // Текущая позиция цели
-    private bool hasTarget = false;               // Есть ли активная цель
-    private float lastTargetUpdateTime;           // Время последнего обновления цели
+    private Vector2 joystickInput = Vector2.zero; // Ввод от джойстика
+    private bool hasJoystickInput = false;        // Есть ли ввод от джойстика
     
     // Текущие углы вращения
     private float currentTurretAngle = 0f;        // Текущий угол башни
@@ -45,94 +44,76 @@ public class TurretController : MonoBehaviour
 
     void Start()
     {
-        // Подписываемся на событие позиции для прицеливания
-        GlobalEvents.ShootPosition.AddListener(SetTargetPosition);
+        // Подписываемся на событие вращения башни от джойстика
+        GlobalEvents.TurretRotation.AddListener(SetJoystickInput);
         
-        // Инициализируем текущие углы
+        // Инициализируем текущие углы с учетом начального поворота
         if (turretBase != null)
         {
             currentTurretAngle = GetCurrentTurretAngle();
             smoothedTurretAngle = currentTurretAngle;
+            targetTurretAngle = currentTurretAngle; // Устанавливаем целевую позицию равной текущей
         }
         if (weaponBarrel != null)
         {
-            currentWeaponAngle = GetCurrentWeaponAngle();
+            currentWeaponAngle = GetCurrentWeaponAngle() + weaponAngleCorrection;
             smoothedWeaponAngle = currentWeaponAngle;
+            targetWeaponAngle = currentWeaponAngle; // Устанавливаем целевую позицию равной текущей
         }
     }
 
     void OnDestroy()
     {
         // Отписываемся от события при уничтожении
-        GlobalEvents.ShootPosition.RemoveListener(SetTargetPosition);
+        GlobalEvents.TurretRotation.RemoveListener(SetJoystickInput);
     }
 
     void Update()
     {
-        // Обновляем прицеливание
-        UpdateAiming();
+        // Обновляем вращение башни
+        UpdateTurretRotation();
         
         // Применяем вращения
         ApplyRotations();
     }
 
-    void SetTargetPosition(Vector3 targetPos)
+    void SetJoystickInput(Vector2 input)
     {
-        currentTargetPosition = targetPos;
-        hasTarget = true;
-        lastTargetUpdateTime = Time.time;
-        
-        // Вычисляем целевые углы
-        CalculateTargetAngles(targetPos);
+        joystickInput = input;
+        hasJoystickInput = input.magnitude > 0.1f;
     }
 
-    void CalculateTargetAngles(Vector3 targetPos)
+    void UpdateTurretRotation()
     {
-        if (turretBase == null || weaponBarrel == null) return;
+        if (!hasJoystickInput) return;
 
-        // Вычисляем направление к цели относительно башни
-        Vector3 directionToTarget = targetPos - turretBase.position;
-        directionToTarget.y = 0; // Игнорируем вертикальную составляющую для горизонтального вращения
-        
-        if (directionToTarget.magnitude > 0.1f)
+        // Горизонтальное вращение башни (X ось джойстика) - относительное вращение
+        if (turretBase != null)
         {
-            // Вычисляем угол поворота башни относительно мировых координат
-            float worldAngle = Mathf.Atan2(directionToTarget.x, directionToTarget.z) * Mathf.Rad2Deg;
-            targetTurretAngle = worldAngle;
+            float turretRotationSpeed = joystickInput.x * joystickSensitivity * maxRotationSpeed;
+            targetTurretAngle = currentTurretAngle + turretRotationSpeed * Time.deltaTime;
         }
 
-        // Вычисляем угол подъема оружия
-        Vector3 weaponDirection = targetPos - weaponBarrel.position;
-        float distance = weaponDirection.magnitude;
-        
-        if (distance > 0.1f)
+        // Вертикальное вращение оружия (Y ось джойстика) - относительное вращение
+        if (weaponBarrel != null)
         {
-            // Вычисляем угол подъема относительно горизонта
-            float elevationAngle = Mathf.Asin(weaponDirection.y / distance) * Mathf.Rad2Deg;
+            float weaponRotationSpeed = joystickInput.y * joystickSensitivity * maxRotationSpeed;
+            float newWeaponAngle = currentWeaponAngle + weaponRotationSpeed * Time.deltaTime;
             
-            // Применяем настраиваемую корректировку угла
-            elevationAngle += weaponAngleCorrection;
-            
-            // Ограничиваем угол в пределах min/max
-            targetWeaponAngle = Mathf.Clamp(elevationAngle, minWeaponAngle, maxWeaponAngle);
+            // Ограничиваем угол оружия относительно начального положения с учетом корректировки
+            float correctedMinAngle = minWeaponAngle + weaponAngleCorrection;
+            float correctedMaxAngle = maxWeaponAngle + weaponAngleCorrection;
+            targetWeaponAngle = Mathf.Clamp(newWeaponAngle, correctedMinAngle, correctedMaxAngle);
         }
     }
 
-    void UpdateAiming()
-    {
-        // Проверяем, нужно ли обновить цель
-        if (hasTarget && Time.time - lastTargetUpdateTime > 1f / targetUpdateRate)
-        {
-            CalculateTargetAngles(currentTargetPosition);
-        }
-    }
 
     void ApplyRotations()
     {
         float dt = Time.deltaTime;
         
-        // Вращение башни с сглаживанием
-        if (turretBase != null && hasTarget)
+        // Вращение башни с сглаживанием (относительные углы)
+        if (turretBase != null && hasJoystickInput)
         {
             float angleDifference = Mathf.DeltaAngle(currentTurretAngle, targetTurretAngle);
             
@@ -154,8 +135,8 @@ public class TurretController : MonoBehaviour
             }
         }
         
-        // Вращение оружия с сглаживанием
-        if (weaponBarrel != null && hasTarget)
+        // Вращение оружия с сглаживанием (относительные углы)
+        if (weaponBarrel != null && hasJoystickInput)
         {
             float angleDifference = targetWeaponAngle - currentWeaponAngle;
             
@@ -180,14 +161,14 @@ public class TurretController : MonoBehaviour
 
     void ApplyTurretRotation()
     {
-        // Применяем сглаженное вращение башни вокруг оси Y (горизонтальное вращение)
-        Quaternion rotation = Quaternion.Euler(0, smoothedTurretAngle, 0);
-        turretBase.rotation = rotation;
+        // Применяем сглаженное вращение башни в локальных углах вокруг заданной оси
+        Quaternion rotation = Quaternion.AngleAxis(smoothedTurretAngle, turretRotationAxis);
+        turretBase.localRotation = rotation;
     }
 
     void ApplyWeaponRotation()
     {
-        // Применяем сглаженное вращение оружия вокруг заданной оси
+        // Применяем сглаженное вращение оружия в локальных углах вокруг заданной оси
         Quaternion rotation = Quaternion.AngleAxis(smoothedWeaponAngle, weaponRotationAxis);
         weaponBarrel.localRotation = rotation;
     }
@@ -196,12 +177,21 @@ public class TurretController : MonoBehaviour
     {
         if (turretBase == null) return 0f;
         
-        // Извлекаем угол вращения из Transform
-        Vector3 forward = turretBase.forward;
-        forward.y = 0;
-        forward.Normalize();
+        // Извлекаем локальный угол вращения башни вокруг заданной оси
+        Vector3 localEuler = turretBase.localEulerAngles;
         
-        float angle = Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+        // Определяем угол в зависимости от оси вращения
+        float angle = 0f;
+        if (turretRotationAxis == Vector3.right) // X ось
+            angle = localEuler.x;
+        else if (turretRotationAxis == Vector3.up) // Y ось
+            angle = localEuler.y;
+        else if (turretRotationAxis == Vector3.forward) // Z ось
+            angle = localEuler.z;
+        
+        // Нормализуем угол в диапазон -180..180
+        if (angle > 180f) angle -= 360f;
+        
         return angle;
     }
 
@@ -209,30 +199,29 @@ public class TurretController : MonoBehaviour
     {
         if (weaponBarrel == null) return 0f;
         
-        // Извлекаем угол вращения вокруг заданной оси
-        Vector3 forward = weaponBarrel.TransformDirection(Vector3.forward);
-        return Vector3.SignedAngle(Vector3.forward, forward, weaponRotationAxis);
+        // Извлекаем локальный угол вращения оружия вокруг заданной оси
+        Vector3 localEuler = weaponBarrel.localEulerAngles;
+        
+        // Определяем угол в зависимости от оси вращения
+        float angle = 0f;
+        if (weaponRotationAxis == Vector3.right) // X ось
+            angle = localEuler.x;
+        else if (weaponRotationAxis == Vector3.up) // Y ось
+            angle = localEuler.y;
+        else if (weaponRotationAxis == Vector3.forward) // Z ось
+            angle = localEuler.z;
+        
+        // Нормализуем угол в диапазон -180..180
+        if (angle > 180f) angle -= 360f;
+        
+        return angle;
     }
+
 
     // Публичные методы для внешнего доступа
-    public void SetTurretTarget(Vector3 targetPosition)
+    public bool IsRotating()
     {
-        SetTargetPosition(targetPosition);
-    }
-
-    public bool IsAiming()
-    {
-        if (!hasTarget) return false;
-        
-        float turretDiff = Mathf.Abs(Mathf.DeltaAngle(currentTurretAngle, targetTurretAngle));
-        float weaponDiff = Mathf.Abs(targetWeaponAngle - currentWeaponAngle);
-        
-        return turretDiff > aimThreshold || weaponDiff > aimThreshold;
-    }
-
-    public Vector3 GetCurrentTargetPosition()
-    {
-        return hasTarget ? currentTargetPosition : Vector3.zero;
+        return hasJoystickInput;
     }
 
     public float GetTurretAngle()
@@ -243,5 +232,10 @@ public class TurretController : MonoBehaviour
     public float GetWeaponAngle()
     {
         return currentWeaponAngle;
+    }
+
+    public Vector2 GetJoystickInput()
+    {
+        return joystickInput;
     }
 }
