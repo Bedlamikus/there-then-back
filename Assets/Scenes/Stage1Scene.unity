@@ -664,6 +664,7 @@ GameObject:
   - component: {fileID: 305958520}
   - component: {fileID: 305958523}
   - component: {fileID: 305958524}
+  - component: {fileID: 305958525}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -796,6 +797,26 @@ MonoBehaviour:
   m_CameraActivatedEvent:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &305958525
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 305958519}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85a77cd0b7fad224fa5bb0586d3ea7cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  raycastDistance: 1000
+  raycastLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  shootKey: 323
+  showDebugRay: 1
+  rayColor: {r: 1, g: 0, b: 0, a: 1}
+  debugRayDuration: 0.1
 --- !u!1 &367553369
 GameObject:
   m_ObjectHideFlags: 0
@@ -3259,6 +3280,7 @@ GameObject:
   - component: {fileID: 4306643201374561519}
   - component: {fileID: 8401952776435718364}
   - component: {fileID: 7416691523269361709}
+  - component: {fileID: 8401952776435718365}
   m_Layer: 6
   m_Name: Cube.005
   m_TagString: Untagged
@@ -3371,6 +3393,29 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7623545439557051745}
   m_Mesh: {fileID: 2212009239438826721, guid: a247e4b584e06d845bda64cfe5c0950e, type: 3}
+--- !u!114 &8401952776435718365
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7623545439557051745}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8303d2ada86649c49865c3d72daf4255, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  turretBase: {fileID: 4306643201374561519}
+  weaponBarrel: {fileID: 65183608935643937}
+  turretRotationAxis: {x: 0, y: 1, z: 0}
+  weaponRotationAxis: {x: -1, y: 0, z: 0}
+  turretRotationSpeed: 90
+  weaponRotationSpeed: 60
+  minWeaponAngle: 60
+  maxWeaponAngle: 150
+  weaponAngleCorrection: 90
+  targetUpdateRate: 30
+  aimThreshold: 0.1
 --- !u!1 &8651625446362597989
 GameObject:
   m_ObjectHideFlags: 0
