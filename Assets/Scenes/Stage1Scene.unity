@@ -1795,6 +1795,17 @@ MonoBehaviour:
   cameraHeight: 5.66
   minVerticalAngle: -60
   maxVerticalAngle: 60
+  maxCameraDistance: 8
+  minCameraDistance: 1
+  cameraMoveSpeed: 5
+  cameraReturnSpeed: 3
+  collisionLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  hysteresisDistance: 1
+  playerLayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
   cameraJoystick: {fileID: 1562530433}
 --- !u!4 &1821742253
 Transform:
