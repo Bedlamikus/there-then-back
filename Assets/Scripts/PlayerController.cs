@@ -16,6 +16,12 @@ public class PlayerController : MonoBehaviour
     public float coyoteTime = 0.1f;              // Время-призрак для прыжка после отрыва от земли
     public float groundCheckDistance = 0.2f;     // Расстояние проверки земли
 
+    [Header("Animation")]
+    public Animator animator;                    // Аниматор персонажа
+    public string speedParameter = "Speed";      // Параметр скорости в аниматоре
+    public string isGroundedParameter = "IsGrounded"; // Параметр нахождения на земле
+    public float animationSpeedMultiplier = 1f;  // Множитель скорости анимации
+
     CharacterController controller;
     Vector2 _input;                              // Ввод WASD (-1..1)
     bool _jumpPressed;
@@ -23,11 +29,21 @@ public class PlayerController : MonoBehaviour
     float _lastGroundTime;
     Vector3 _velocity;                           // Вертикальная скорость для прыжка и гравитации
 
+    // Анимация
+    float _currentSpeed;                         // Текущая скорость движения
+    Vector3 _lastPosition;                       // Позиция в предыдущем кадре для расчета скорости
+
     void Awake()
     {
         controller = GetComponent<CharacterController>();
         GlobalEvents.PlayerMove.AddListener(SetInput);
         GlobalEvents.PlayerJump.AddListener(Jump);
+
+        // Инициализация анимации
+        if (animator == null)
+            animator = GetComponent<Animator>();
+        
+        _lastPosition = transform.position;
     }
 
     private void SetInput(Vector2 direction)
@@ -98,6 +114,9 @@ public class PlayerController : MonoBehaviour
         // 6) Движение CharacterController
         Vector3 move = moveDirection + Vector3.up * _velocity.y;
         controller.Move(move * dt);
+
+        // 7) Обновление анимации
+        UpdateAnimation();
     }
 
 
@@ -114,6 +133,39 @@ public class PlayerController : MonoBehaviour
         {
             _grounded = false;
         }
+    }
+
+    // ---------- Animation Update ----------
+    void UpdateAnimation()
+    {
+        if (animator == null) return;
+
+        // Рассчитываем скорость движения по горизонтали
+        Vector3 currentPosition = transform.position;
+        Vector3 horizontalMovement = currentPosition - _lastPosition;
+        horizontalMovement.y = 0; // Убираем вертикальную составляющую
+        
+        _currentSpeed = horizontalMovement.magnitude / Time.deltaTime;
+        
+        // Нормализуем скорость (0 = стоит, 1 = максимальная скорость)
+        float normalizedSpeed = Mathf.Clamp01(_currentSpeed / moveSpeed);
+        
+        // Устанавливаем параметры аниматора
+        animator.SetFloat(speedParameter, normalizedSpeed);
+        animator.SetBool(isGroundedParameter, _grounded);
+        
+        // Синхронизируем скорость анимации с реальной скоростью
+        if (normalizedSpeed > 0.1f) // Если движется
+        {
+            animator.speed = 1f + (normalizedSpeed - 0.5f) * animationSpeedMultiplier;
+        }
+        else // Если стоит
+        {
+            animator.speed = 1f;
+        }
+        
+        // Обновляем позицию для следующего кадра
+        _lastPosition = currentPosition;
     }
 
 }

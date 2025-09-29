@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-public class TurretJoystick : FloatingJoystick
+public class TurretJoystick : Joystick
 {
     private Vector2 lastTurretDirection = Vector2.zero;
 

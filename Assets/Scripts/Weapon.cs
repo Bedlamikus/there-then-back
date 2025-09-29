@@ -20,6 +20,9 @@ public class Weapon : MonoBehaviour
         // Подписываемся на событие стрельбы
         GlobalEvents.Shoot.AddListener(OnShoot);
         
+        // Подписываемся на событие выбора снаряда
+        GlobalEvents.ProjectileSelected.AddListener(OnProjectileSelected);
+        
         // Если не указана точка стрельбы, используем позицию оружия
         if (shootPosition == null)
             shootPosition = transform;
@@ -38,6 +41,7 @@ public class Weapon : MonoBehaviour
     {
         // Отписываемся от события при уничтожении
         GlobalEvents.Shoot.RemoveListener(OnShoot);
+        GlobalEvents.ProjectileSelected.RemoveListener(OnProjectileSelected);
     }
 
     void OnShoot()
@@ -78,6 +82,24 @@ public class Weapon : MonoBehaviour
         {
             StartReload();
         }
+    }
+
+    void OnProjectileSelected(GameObject newProjectilePrefab)
+    {
+        if (newProjectilePrefab == null)
+        {
+            Debug.LogWarning("Weapon: Получен пустой префаб снаряда!");
+            return;
+        }
+
+        // Меняем префаб снаряда
+        projectilePrefab = newProjectilePrefab;
+        
+        // Полностью заряжаем магазин при смене снаряда
+        currentAmmo = maxAmmo;
+        isReloading = false;
+        
+        Debug.Log($"Weapon: Выбран новый снаряд {newProjectilePrefab.name}, магазин заряжен!");
     }
 
     void HandleReload()
