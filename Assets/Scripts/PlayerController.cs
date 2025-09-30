@@ -44,6 +44,18 @@ public class PlayerController : MonoBehaviour
             animator = GetComponent<Animator>();
         
         _lastPosition = transform.position;
+        
+        // Инициализация сервиса автоспавна
+        InitializeAutoSpawnService();
+    }
+    
+    private void InitializeAutoSpawnService()
+    {
+        // Создаем новый экземпляр сервиса автоспавна
+        new AutoSpawnService();
+        
+        // Инициализируем сервис с данным игроком
+        AutoSpawnService.Instance?.Initialize(this);
     }
 
     private void SetInput(Vector2 direction)
@@ -67,6 +79,9 @@ public class PlayerController : MonoBehaviour
 
         // Движение
         HandleMovement();
+        
+        // Обновление сервиса автоспавна
+        AutoSpawnService.Instance?.Tick(Time.deltaTime);
     }
 
     void HandleMovement()

@@ -293,4 +293,21 @@ public class VoxelWorld : MonoBehaviour
 
         return SetBlock(tx, ty, tz, blockType, true);
     }
+    
+    // === Публичный метод для проверки наличия блока ===
+    public bool HasBlockAt(int wx, int wy, int wz)
+    {
+        if (wx < 0 || wz < 0 || wy < 0 || wy >= VoxelChunk16.HEIGHT) return false;
+        if (wx >= chunksX * VoxelChunk16.WIDTH || wz >= chunksZ * VoxelChunk16.DEPTH) return false;
+
+        int cxi = wx / VoxelChunk16.WIDTH;
+        int czi = wz / VoxelChunk16.DEPTH;
+        int lx = wx % VoxelChunk16.WIDTH;
+        int lz = wz % VoxelChunk16.DEPTH;
+
+        if (!_chunks.TryGetValue((cxi, czi), out var entry)) return false;
+        
+        int blockType = entry.data[lx, wy, lz];
+        return blockType != AIR; // Возвращаем true если блок не воздух
+    }
 }
