@@ -23,13 +23,111 @@ public class VoxelChunk16 : MonoBehaviour
     // ===== приватное =====
     Mesh _mesh;
     MeshCollider _collider;
+    
+    // ===== система автосохранения =====
+    private SaveData<SingleChunkData> saveData;
+    private int[,,] cachedData;                // Кешированные данные блоков
+    private bool isDirty = false;              // Были ли изменения
+    private float dirtyMarkTime = 0f;          // Время когда чанк был помечен как dirty
+    private const float SAVE_DELAY = 5f;       // Задержка перед сохранением (5 секунд после изменения)
+    public int chunkX { get; private set; }
+    public int chunkZ { get; private set; }
 
     // подготовленные UV-координаты (кеш на каждый tileIndex)
     static readonly Dictionary<int, Vector2[]> uvCache = new();
     const int atlasCols = 10; // у тебя атлас 10x10
 
+    /// <summary>
+    /// Инициализация чанка для автосохранения
+    /// </summary>
+    public void Initialize(int cx, int cz, int[,,] data)
+    {
+        chunkX = cx;
+        chunkZ = cz;
+        cachedData = data;
+        
+        // Создаем SaveData с уникальным именем чанка
+        string chunkName = $"Chunk_{cx}_{cz}";
+        saveData = new SaveData<SingleChunkData>(chunkName);
+    }
+    
+    void Update()
+    {
+        // Автосохранение: проверяем прошло ли 5 секунд с момента изменения
+        if (isDirty && Time.time - dirtyMarkTime >= SAVE_DELAY)
+        {
+            SaveChunk();
+        }
+    }
+    
+    void OnDestroy()
+    {
+        // Сохраняем при уничтожении если были изменения
+        if (isDirty && saveData != null)
+        {
+            SaveChunk();
+        }
+    }
+    
+    /// <summary>
+    /// Сохранить чанк
+    /// </summary>
+    public void SaveChunk()
+    {
+        if (saveData == null || cachedData == null || hpData == null)
+            return;
+        
+        var data = new SingleChunkData();
+        data.PackData(chunkX, chunkZ, cachedData, hpData);
+        
+        saveData.Data = data;
+        saveData.Save();
+        
+        isDirty = false;
+        //Debug.Log($"Chunk ({chunkX}, {chunkZ}) сохранен");
+    }
+    
+    /// <summary>
+    /// Загрузить данные чанка из сохранения
+    /// </summary>
+    public bool LoadChunk(out int[,,] data, out short[,,] hp)
+    {
+        data = null;
+        hp = null;
+        
+        if (saveData == null || !saveData.Exists())
+            return false;
+        
+        var chunkData = saveData.Load();
+        if (chunkData == null)
+            return false;
+        
+        chunkData.UnpackData(out data, out hp);
+        cachedData = data;
+        isDirty = false;
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Пометить чанк как измененный (вызывается из VoxelWorld при повреждениях)
+    /// </summary>
+    public void MarkDirty()
+    {
+        if (!isDirty)
+        {
+            // Запоминаем время первого изменения
+            dirtyMarkTime = Time.time;
+            isDirty = true;
+            //Debug.Log($"Chunk ({chunkX}, {chunkZ}) помечен как измененный, автосохранение через 5 секунд");
+        }
+    }
+
     public void Build(int[,,] data)
     {
+        // Сохраняем данные для автосохранения
+        cachedData = data;
+        
         if (_mesh == null)
         {
             _mesh = new Mesh();

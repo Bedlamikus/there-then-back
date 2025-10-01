@@ -86,7 +86,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        if (!cameraPivot) return;
+        if (!CameraPivot) return;
 
         float dt = Time.deltaTime;
 
@@ -183,4 +183,13 @@ public class PlayerController : MonoBehaviour
         _lastPosition = currentPosition;
     }
 
+    private Transform CameraPivot
+    {
+        get
+        {
+            if (cameraPivot == null)
+                cameraPivot = Camera.main.transform;
+            return cameraPivot;
+        }
+    }
 }
