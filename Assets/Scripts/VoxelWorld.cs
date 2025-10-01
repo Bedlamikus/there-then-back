@@ -310,4 +310,11 @@ public class VoxelWorld : MonoBehaviour
         int blockType = entry.data[lx, wy, lz];
         return blockType != AIR; // Возвращаем true если блок не воздух
     }
+    
+    // === Публичный метод для перестройки чанка ===
+    public void RebuildChunk(int cx, int cz)
+    {
+        if (!_chunks.TryGetValue((cx, cz), out var entry)) return;
+        entry.builder.Build(entry.data);
+    }
 }
