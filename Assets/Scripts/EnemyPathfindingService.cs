@@ -80,7 +80,6 @@ public class EnemyPathfindingService
                 
                 if (!stillInArea)
                 {
-                    Debug.Log($"[Pathfinding] Вышли из зоны застревания во время восстановления. Позиция: {currentPos}");
                     stuckAttempts = 0;
                     isInStuckArea = false;
                 }
@@ -88,14 +87,12 @@ public class EnemyPathfindingService
             
             if (unstuckPatrolTimer >= config.unstuckPatrolTime)
             {
-                Debug.Log($"[Pathfinding] Восстановление завершено. В зоне застревания: {isInStuckArea}");
                 isRecoveringFromStuck = false;
-                justFinishedRecovery = true; // Сигнализируем о завершении
+                justFinishedRecovery = true;
                 
                 // Если все еще в зоне - принудительно сбрасываем
                 if (isInStuckArea)
                 {
-                    Debug.LogWarning($"[Pathfinding] Все еще в зоне застревания после восстановления! Принудительно сбрасываем.");
                     stuckAttempts = 0;
                     isInStuckArea = false;
                 }
@@ -224,12 +221,16 @@ public class EnemyPathfindingService
             
             if (safePoint != Vector3.zero)
             {
-                Debug.Log($"[Pathfinding] Найдена безопасная точка патруля: {safePoint} (попытка {attempt + 1}/{maxAttempts})");
                 return safePoint;
             }
         }
         
-        Debug.LogWarning($"[Pathfinding] Не удалось найти безопасную точку патруля за {maxAttempts} попыток. Остаемся на месте.");
+        // Если не нашли - возвращаем стартовую позицию (безопаснее чем текущую)
+        if (startPosition != Vector3.zero)
+        {
+            return startPosition;
+        }
+        
         return transform.position;
     }
     
@@ -239,7 +240,6 @@ public class EnemyPathfindingService
         unstuckPatrolTimer = 0f;
         // НЕ сбрасываем stuckAttempts и isInStuckArea сразу
         // Они сбросятся когда бот выйдет из зоны застревания
-        Debug.Log($"[Pathfinding] Начинаем восстановление от застревания. Центр зоны: {stuckAreaCenter}");
     }
     
     public void ResetStuckDetection()
@@ -248,7 +248,6 @@ public class EnemyPathfindingService
         isInStuckArea = false;
         stuckCheckTimer = 0f;
         shouldJumpThisFrame = false;
-        Debug.Log($"[Pathfinding] Сброс обнаружения застревания");
     }
     
     public void ConsumeJumpFlag()
@@ -275,14 +274,11 @@ public class EnemyPathfindingService
             cachedWorldMaxZ = worldDepth - 5f;
             
             worldBoundsCached = true;
-            
-            Debug.Log($"[Pathfinding] Границы мира обновлены: X=[{cachedWorldMinX}, {cachedWorldMaxX}], Z=[{cachedWorldMinZ}, {cachedWorldMaxZ}] (размер мира: {worldWidth}x{worldDepth})");
         }
         else if (!worldBoundsCached)
         {
             // Используем значения по умолчанию
-            Debug.LogWarning($"[Pathfinding] VoxelWorld не найден, используем границы по умолчанию: X=[5, 75], Z=[5, 75]");
-            worldBoundsCached = true; // Не спамим предупреждениями
+            worldBoundsCached = true;
         }
     }
     
@@ -321,19 +317,21 @@ public class EnemyPathfindingService
         int maxSteps = config.maxPathLength;
         int steps = 0;
         
-        while (Vector3.Distance(current, end) > config.waypointReachDistance && steps < maxSteps)
+        while (Vector3.Distance(current, end) > 2f && steps < maxSteps) // Увеличено до 2.0f
         {
             Vector3 direction = (end - current).normalized;
             Vector3 nextStep = current + direction * 2f; // Шаг в 2 блока
             
-            // Проверяем можно ли идти прямо
-            if (CanMoveTo(nextStep))
+            // Ищем проходимую позицию с учетом высоты
+            Vector3 walkableStep = FindWalkablePosition(nextStep);
+            
+            if (walkableStep != Vector3.zero)
             {
-                current = nextStep;
+                current = walkableStep;
             }
             else
             {
-                // Пытаемся обойти препятствие
+                // Пытаемся обойти препятствие в 4 направлениях
                 Vector3[] directions = {
                     new Vector3(1, 0, 0), new Vector3(-1, 0, 0),
                     new Vector3(0, 0, 1), new Vector3(0, 0, -1)
@@ -343,9 +341,11 @@ public class EnemyPathfindingService
                 foreach (Vector3 dir in directions)
                 {
                     Vector3 alternative = current + dir * 2f;
-                    if (CanMoveTo(alternative))
+                    Vector3 walkableAlternative = FindWalkablePosition(alternative);
+                    
+                    if (walkableAlternative != Vector3.zero)
                     {
-                        current = alternative;
+                        current = walkableAlternative;
                         foundAlternative = true;
                         break;
                     }
@@ -353,7 +353,18 @@ public class EnemyPathfindingService
                 
                 if (!foundAlternative)
                 {
-                    break; // Не можем найти путь
+                    // Пробуем прыжок вверх
+                    Vector3 jumpUp = current + direction * 2f + Vector3.up * 2f;
+                    Vector3 walkableJump = FindWalkablePosition(jumpUp);
+                    
+                    if (walkableJump != Vector3.zero)
+                    {
+                        current = walkableJump;
+                    }
+                    else
+                    {
+                        break; // Не можем найти путь
+                    }
                 }
             }
             
@@ -362,6 +373,54 @@ public class EnemyPathfindingService
         }
         
         return path;
+    }
+    
+    private Vector3 FindWalkablePosition(Vector3 targetPosition)
+    {
+        if (voxelWorld == null) return targetPosition;
+        
+        int blockX = Mathf.FloorToInt(targetPosition.x);
+        int blockZ = Mathf.FloorToInt(targetPosition.z);
+        int startY = Mathf.FloorToInt(targetPosition.y);
+        
+        // Ищем проходимую высоту в диапазоне ±10 блоков от целевой Y
+        for (int yOffset = 0; yOffset <= 10; yOffset++)
+        {
+            // Проверяем сначала вверх, потом вниз
+            int[] yChecks = { startY + yOffset, startY - yOffset };
+            
+            foreach (int checkY in yChecks)
+            {
+                if (checkY < 0 || checkY >= voxelWorld.GetWorldHeight()) continue;
+                
+                Vector3 testPos = new Vector3(blockX + 0.5f, checkY + 0.5f, blockZ + 0.5f);
+                
+                // Проверяем что позиция проходима (нет блока, есть земля под ногами, есть место над головой)
+                if (IsWalkablePosition(blockX, checkY, blockZ))
+                {
+                    return testPos;
+                }
+            }
+        }
+        
+        return Vector3.zero; // Не нашли проходимую позицию
+    }
+    
+    private bool IsWalkablePosition(int blockX, int blockY, int blockZ)
+    {
+        if (voxelWorld == null) return false;
+        
+        // Проверяем что в этой позиции нет блока (можем стоять)
+        if (voxelWorld.HasBlockAt(blockX, blockY, blockZ)) return false;
+        
+        // Проверяем что есть земля под ногами
+        if (!voxelWorld.HasBlockAt(blockX, blockY - 1, blockZ)) return false;
+        
+        // Проверяем что есть место над головой (2 блока)
+        if (voxelWorld.HasBlockAt(blockX, blockY + 1, blockZ)) return false;
+        if (voxelWorld.HasBlockAt(blockX, blockY + 2, blockZ)) return false;
+        
+        return true;
     }
     
     private bool CanMoveTo(Vector3 position)
@@ -417,10 +476,6 @@ public class EnemyPathfindingService
             
             if (!stillInArea)
             {
-                if (stuckAttempts > 0)
-                {
-                    Debug.Log($"[Pathfinding] Бот вышел из зоны застревания. Попыток было: {stuckAttempts}");
-                }
                 stuckAttempts = 0;
                 isInStuckArea = false;
             }
@@ -432,17 +487,15 @@ public class EnemyPathfindingService
                     // Первая попытка - проверяем есть ли препятствие, если да - прыжок
                     if (HasObstacleInFront(currentMoveDirection))
                     {
-                        stuckAttempts = 1; // Устанавливаем в 1 для отслеживания
-                        shouldJumpThisFrame = true; // Устанавливаем флаг прыжка (одноразовый)
-                        Debug.Log($"[Pathfinding] Обнаружено застревание с препятствием! Попытка #1: Инициируем прыжок. Позиция: {currentPos}");
+                        stuckAttempts = 1;
+                        shouldJumpThisFrame = true;
                         stuckCheckTimer = 0f;
                         stuckCheckPosition = currentPos;
                         return;
                     }
                     else
                     {
-                        Debug.Log($"[Pathfinding] Застревание без препятствия. Попытка #1: Пропускаем прыжок, ищем новый путь.");
-                        stuckAttempts = 2; // Сразу переходим ко второй попытке
+                        stuckAttempts = 2;
                         stuckCheckTimer = 0f;
                         stuckCheckPosition = currentPos;
                     }
@@ -451,7 +504,6 @@ public class EnemyPathfindingService
                 {
                     // После прыжка - переходим к поиску нового пути
                     stuckAttempts = 2;
-                    Debug.Log($"[Pathfinding] Прыжок не помог. Попытка #2: Ищем новый путь. Позиция: {currentPos}");
                     StopPathfinding();
                     stuckCheckTimer = 0f;
                     stuckCheckPosition = currentPos;
@@ -460,7 +512,6 @@ public class EnemyPathfindingService
                 {
                     // Новый путь не помог - переходим к отдыху
                     stuckAttempts = 3;
-                    Debug.Log($"[Pathfinding] Новый путь не помог. Попытка #3: Переходим к отдыху на {config.unstuckPatrolTime}s. Позиция: {currentPos}");
                     StartUnstuckRecovery();
                     stuckCheckTimer = 0f;
                     stuckCheckPosition = currentPos;
@@ -471,18 +522,32 @@ public class EnemyPathfindingService
     
     private Vector3 FindSafeHeightForPoint(Vector3 point, Vector3 startPosition)
     {
-        float startY = startPosition.y;
-        float minY = startY - 20f;
-        float stepY = 1f;
+        // ВАЖНО: Округляем до центра блока (0.5, 1.5, 2.5 и т.д.)
+        int blockX = Mathf.FloorToInt(point.x);
+        int blockZ = Mathf.FloorToInt(point.z);
+        float centerX = blockX + 0.5f;
+        float centerZ = blockZ + 0.5f;
         
-        for (float y = startY; y >= minY; y -= stepY)
+        int startY = Mathf.FloorToInt(startPosition.y);
+        int minY = Mathf.Max(0, startY - 20); // Не ниже 0
+        int maxY = Mathf.Min(voxelWorld != null ? voxelWorld.GetWorldHeight() - 3 : 125, startY + 10); // Проверяем и вверх
+        
+        // Ищем проходимую высоту сначала вниз, потом вверх
+        for (int y = startY; y >= minY; y--)
         {
-            Vector3 testPoint = new Vector3(point.x, y, point.z);
-            Vector3 groundCheckPoint = new Vector3(point.x, y - 1f, point.z);
-            
-            if (IsPositionSafe(testPoint, groundCheckPoint))
+            if (IsWalkablePosition(blockX, y, blockZ))
             {
-                return testPoint;
+                // Возвращаем позицию в центре блока
+                return new Vector3(centerX, y + 0.5f, centerZ);
+            }
+        }
+        
+        // Если не нашли вниз, пробуем вверх
+        for (int y = startY + 1; y <= maxY; y++)
+        {
+            if (IsWalkablePosition(blockX, y, blockZ))
+            {
+                return new Vector3(centerX, y + 0.5f, centerZ);
             }
         }
         
@@ -530,7 +595,6 @@ public class EnemyPathfindingService
             
             if (HasSolidBlockAt(checkPos))
             {
-                Debug.Log($"[Pathfinding] Обнаружено препятствие на высоте {height}m в позиции {checkPos}");
                 return true;
             }
         }

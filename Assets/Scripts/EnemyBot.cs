@@ -12,6 +12,11 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     public CharacterController controller;
     public Animator animator;
     
+    [Header("Weapon")]
+    public Transform turret;           // Турель (вращается по Z горизонтально)
+    public Transform weaponBarrel;     // Ствол оружия (вращается вверх/вниз)
+    public Transform shootPoint;       // Точка выстрела (на конце ствола)
+    
     [Header("Bot Identity")]
     public string botID;
     
@@ -22,12 +27,30 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     // Цель
     private Transform target;
+    private bool isInitialized = false;
 
-    void Start()
+    public void Init(Transform playerTarget)
     {
+        if (isInitialized)
+        {
+            Debug.LogWarning($"[Bot] Бот {botID} уже инициализирован!");
+            return;
+        }
+        
         InitializeBot();
         InitializeServices();
+        
+        // Устанавливаем цель
+        target = playerTarget;
+        if (aiStateMachine != null && target != null)
+        {
+            aiStateMachine.SetTarget(target);
+        }
+        
+        Debug.Log($"[Bot] Бот {botID} создан в позиции {transform.position}");
+        
         RegisterWithAutoSpawn();
+        isInitialized = true;
     }
 
     void Update()
@@ -38,59 +61,8 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     void OnDestroy()
     {
+        Debug.Log($"[Bot] Бот {botID} уничтожен");
         AutoSpawnService.Instance?.UnregisterSpawnable(this);
-    }
-    
-    void OnDrawGizmos()
-    {
-        // Рисуем путь если он есть
-        if (pathfindingService != null && pathfindingService.CurrentPath != null && pathfindingService.CurrentPath.Count > 0)
-        {
-            List<Vector3> path = pathfindingService.CurrentPath;
-            
-            // Рисуем кубики на каждой точке пути
-            for (int i = 0; i < path.Count; i++)
-            {
-                // Цвет зависит от того, пройдена ли точка
-                if (i < pathfindingService.CurrentWaypointIndex)
-                {
-                    Gizmos.color = Color.gray; // Пройденные точки
-                }
-                else if (i == pathfindingService.CurrentWaypointIndex)
-                {
-                    Gizmos.color = Color.yellow; // Текущая цель
-                }
-                else
-                {
-                    Gizmos.color = Color.green; // Будущие точки
-                }
-                
-                Gizmos.DrawWireCube(path[i], Vector3.one * 0.5f);
-                
-                // Рисуем линии между точками
-                if (i > 0)
-                {
-                    Gizmos.color = Color.cyan;
-                    Gizmos.DrawLine(path[i - 1], path[i]);
-                }
-            }
-            
-            // Рисуем линию от бота до первой точки пути
-            if (path.Count > 0)
-            {
-                Gizmos.color = Color.magenta;
-                Gizmos.DrawLine(transform.position, path[0]);
-            }
-        }
-        
-        // Рисуем текущую точку патруля (если в режиме патруля)
-        if (aiStateMachine != null && aiStateMachine.CurrentState == AIState.Patrol)
-        {
-            Vector3 patrolTarget = aiStateMachine.PatrolTarget;
-            Gizmos.color = Color.blue;
-            Gizmos.DrawWireCube(patrolTarget, Vector3.one * 0.8f);
-            Gizmos.DrawLine(transform.position, patrolTarget);
-        }
     }
     
     private void InitializeBot()
@@ -145,8 +117,6 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         // Проверяем нужно ли прыгать
         if (aiStateMachine.ShouldJump())
         {
-            AIState currentState = aiStateMachine.CurrentState;
-            Debug.Log($"[Bot Jump] Инициирован прыжок! Состояние: {currentState}, Позиция: {transform.position}");
             movementService.InitiateJump();
         }
         
@@ -164,10 +134,37 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     public void SetTarget(Transform newTarget)
     {
         target = newTarget;
+        
         if (aiStateMachine != null)
         {
             aiStateMachine.SetTarget(newTarget);
         }
+    }
+    
+    // Методы для работы с оружием
+    public Transform GetTurret()
+    {
+        return turret;
+    }
+    
+    public Transform GetWeaponBarrel()
+    {
+        return weaponBarrel;
+    }
+    
+    public Transform GetShootPoint()
+    {
+        return shootPoint;
+    }
+    
+    public Transform GetTarget()
+    {
+        return target;
+    }
+    
+    public AIState GetCurrentState()
+    {
+        return aiStateMachine != null ? aiStateMachine.CurrentState : AIState.Idle;
     }
     
     // ISpawnable интерфейс

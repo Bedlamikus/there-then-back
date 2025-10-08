@@ -68,17 +68,21 @@ public class AutoSpawnService
             return;
         }
         
+        Vector3 currentPosition = spawnable.GetTransform().position;
+        
         var data = new SpawnableData
         {
             spawnable = spawnable,
-            startPosition = spawnable.GetTransform().position,
-            lastSavedPosition = spawnable.GetTransform().position,
+            startPosition = currentPosition,
+            lastSavedPosition = currentPosition,
             hasValidSavePosition = true,
             lastSaveTime = Time.time
         };
         
         spawnables[id] = data;
-        Debug.Log($"AutoSpawnService: Зарегистрирована сущность '{id}' на позиции {data.startPosition}");
+        
+        string prefix = id == "Player" ? "[Player]" : "[Bot]";
+        Debug.Log($"{prefix} [AutoSpawn] Зарегистрирована сущность '{id}'. Текущая позиция: {currentPosition}, Стартовая: {data.startPosition}, Сохраненная: {data.lastSavedPosition}");
     }
     
     /// <summary>
@@ -173,9 +177,14 @@ public class AutoSpawnService
     
     private void SavePosition(SpawnableData data)
     {
-        data.lastSavedPosition = data.spawnable.GetTransform().position;
+        Vector3 currentPosition = data.spawnable.GetTransform().position;
+        data.lastSavedPosition = currentPosition;
         data.hasValidSavePosition = true;
         data.lastSaveTime = Time.time;
+        
+        string id = data.spawnable.GetSpawnableID();
+        string prefix = id == "Player" ? "[Player]" : "[Bot]";
+        Debug.Log($"{prefix} [AutoSpawn] Позиция '{id}' сохранена: {currentPosition} (IsGrounded: {data.spawnable.IsGrounded()})");
     }
     
     public void OnPlayerEnterDeadZone(PlayerController deadPlayer)
@@ -193,11 +202,15 @@ public class AutoSpawnService
         
         if (!spawnables.TryGetValue(id, out var data))
         {
-            Debug.LogWarning($"AutoSpawnService: Сущность '{id}' не зарегистрирована в системе спавна!");
+            Debug.LogWarning($"[AutoSpawn] Сущность '{id}' не зарегистрирована в системе спавна!");
             return;
         }
         
-        Debug.Log($"Сущность '{id}' попала в зону смерти! Инициируем спавн...");
+        string prefix = id == "Player" ? "[Player]" : "[Bot]";
+        
+        Vector3 currentPos = spawnable.GetTransform().position;
+        Debug.Log($"{prefix} [AutoSpawn] Сущность '{id}' попала в зону смерти! Текущая позиция: {currentPos}");
+        Debug.Log($"{prefix} [AutoSpawn] Последняя сохраненная позиция: {data.lastSavedPosition}, Стартовая: {data.startPosition}");
         
         // Скрываем сущность
         spawnable.GetGameObject().SetActive(false);
@@ -205,37 +218,50 @@ public class AutoSpawnService
         // Находим безопасную позицию для спавна
         Vector3 spawnPosition = FindSafeSpawnPosition(data);
         
+        Debug.Log($"{prefix} [AutoSpawn] Найдена позиция для респавна: {spawnPosition}");
+        
         // Перемещаем сущность
         spawnable.GetTransform().position = spawnPosition;
         
         // Показываем сущность
         spawnable.GetGameObject().SetActive(true);
         
-        Debug.Log($"Сущность '{id}' заспавнена в позиции: {spawnPosition}");
+        Debug.Log($"{prefix} [AutoSpawn] Сущность '{id}' заспавнена в позиции: {spawnPosition}");
     }
     
     private Vector3 FindSafeSpawnPosition(SpawnableData data)
     {
+        string id = data.spawnable.GetSpawnableID();
+        string prefix = id == "Player" ? "[Player]" : "[Bot]";
+        
         if (voxelWorld == null)
         {
-            Debug.LogWarning($"VoxelWorld не найден! Возвращаем стартовую позицию для '{data.spawnable.GetSpawnableID()}'");
+            Debug.LogWarning($"{prefix} [AutoSpawn] VoxelWorld не найден! Возвращаем стартовую позицию");
             return data.startPosition;
         }
         
         // Сначала проверяем последнюю сохраненную позицию
-        if (data.hasValidSavePosition && IsPositionSafe(data.lastSavedPosition))
+        Debug.Log($"{prefix} [AutoSpawn] Проверяем последнюю сохраненную позицию: {data.lastSavedPosition}");
+        
+        if (data.hasValidSavePosition)
         {
-            Debug.Log($"Последняя сохраненная позиция '{data.spawnable.GetSpawnableID()}' безопасна");
-            return data.lastSavedPosition;
+            bool isSafe = IsPositionSafe(data.lastSavedPosition);
+            Debug.Log($"{prefix} [AutoSpawn] Проверка безопасности: {isSafe}");
+            
+            if (isSafe)
+            {
+                Debug.Log($"{prefix} [AutoSpawn] Последняя сохраненная позиция безопасна, используем ее");
+                return data.lastSavedPosition;
+            }
         }
         
-        Debug.Log($"Последняя сохраненная позиция '{data.spawnable.GetSpawnableID()}' небезопасна, ищем новую...");
+        Debug.Log($"{prefix} [AutoSpawn] Последняя сохраненная позиция небезопасна или невалидна, ищем новую...");
         
         // Ищем точки ниже сохраненной позиции
         Vector3 safePosition = FindSafePositionBelow(data.lastSavedPosition);
         if (safePosition != Vector3.zero)
         {
-            Debug.Log($"Найдена безопасная позиция ниже: {safePosition}");
+            Debug.Log($"{prefix} [AutoSpawn] Найдена безопасная позиция ниже: {safePosition}");
             return safePosition;
         }
         
@@ -243,17 +269,18 @@ public class AutoSpawnService
         safePosition = FindSafePositionInChunks(data.lastSavedPosition);
         if (safePosition != Vector3.zero)
         {
-            Debug.Log($"Найдена безопасная позиция в чанках: {safePosition}");
+            Debug.Log($"{prefix} [AutoSpawn] Найдена безопасная позиция в чанках: {safePosition}");
             return safePosition;
         }
         
         // Если весь мир разрушен и это игрок - сбрасываем мир
-        if (data.spawnable.GetSpawnableID() == "Player")
+        if (id == "Player")
         {
-            Debug.LogWarning("Весь мир разрушен! Сбрасываем мир и возвращаемся на стартовую позицию.");
+            Debug.LogWarning($"{prefix} [AutoSpawn] Весь мир разрушен! Сбрасываем мир и возвращаемся на стартовую позицию.");
             ResetWorld();
         }
         
+        Debug.Log($"{prefix} [AutoSpawn] Возвращаем стартовую позицию: {data.startPosition}");
         return data.startPosition;
     }
     
@@ -262,12 +289,17 @@ public class AutoSpawnService
         if (voxelWorld == null) 
         {
             // Если VoxelWorld еще не найден, считаем позицию безопасной если она не слишком низко
+            Debug.Log($"[AutoSpawn] VoxelWorld == null, проверяем только Y: {position.y} > -10 = {position.y > -10f}");
             return position.y > -10f;
         }
         
         // Проверяем, что позиция в пределах мира (по горизонтали)
-        if (position.x < 0 || position.z < 0 || position.x >= voxelWorld.chunksX * VoxelChunk16.WIDTH || position.z >= voxelWorld.chunksZ * VoxelChunk16.DEPTH)
+        int worldWidth = voxelWorld.chunksX * VoxelChunk16.WIDTH;
+        int worldDepth = voxelWorld.chunksZ * VoxelChunk16.DEPTH;
+        
+        if (position.x < 0 || position.z < 0 || position.x >= worldWidth || position.z >= worldDepth)
         {
+            Debug.Log($"[AutoSpawn] Позиция вне границ мира: {position}, границы: [0, {worldWidth}] x [0, {worldDepth}]");
             return false;
         }
         
@@ -293,15 +325,21 @@ public class AutoSpawnService
             }
         }
         
-        if (!hasGround) return false;
+        if (!hasGround)
+        {
+            Debug.Log($"[AutoSpawn] Нет земли под позицией: {position}");
+            return false;
+        }
         
         // Проверяем, что над головой игрока нет блоков (игрок высотой 2.3)
         Vector3 headPosition = position + Vector3.up * 2.5f;
         if (HasSolidBlockAt(headPosition))
         {
+            Debug.Log($"[AutoSpawn] Блок над головой в позиции: {headPosition}");
             return false; // Есть блок над головой
         }
         
+        Debug.Log($"[AutoSpawn] Позиция {position} безопасна!");
         return true;
     }
     

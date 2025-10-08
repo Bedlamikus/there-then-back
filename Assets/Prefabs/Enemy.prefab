@@ -402,7 +402,6 @@ GameObject:
   - component: {fileID: 7557462725200600856}
   - component: {fileID: 6634843656286642538}
   - component: {fileID: 7872067796414341075}
-  - component: {fileID: 3196011874619606093}
   m_Layer: 6
   m_Name: Weapon
   m_TagString: Untagged
@@ -496,23 +495,6 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.5
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &3196011874619606093
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2937785542623004645}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 501c9ce12cd1b9f448c2576a0efdaf8e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  shootPosition: {fileID: 6748206111318845224}
-  projectilePrefab: {fileID: 3432985819507788519, guid: 2a14c16f376a30e4592041fee7fa871b, type: 3}
-  shootForce: 10
-  maxAmmo: 3
-  reloadTime: 0.5
 --- !u!1 &2952501628745252820
 GameObject:
   m_ObjectHideFlags: 0
@@ -834,7 +816,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1945766891092417179}
-  - component: {fileID: 5701984826114096188}
   m_Layer: 6
   m_Name: TurretBase
   m_TagString: Untagged
@@ -859,31 +840,6 @@ Transform:
   - {fileID: 2327516486087737101}
   m_Father: {fileID: 7427114814888519709}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &5701984826114096188
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4227284155790020339}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8303d2ada86649c49865c3d72daf4255, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  turretBase: {fileID: 1945766891092417179}
-  weaponBarrel: {fileID: 2327516486087737101}
-  turretRotationAxis: {x: 0, y: 0, z: 1}
-  weaponRotationAxis: {x: -1, y: 0, z: 0}
-  turretRotationSpeed: 90
-  weaponRotationSpeed: 60
-  minWeaponAngle: -30
-  maxWeaponAngle: 60
-  weaponAngleCorrection: 0
-  joystickSensitivity: 1
-  maxRotationSpeed: 180
-  smoothingFactor: 0.1
-  minMovementThreshold: 0.5
 --- !u!1 &4339039707745457936
 GameObject:
   m_ObjectHideFlags: 0
@@ -1075,6 +1031,7 @@ GameObject:
   - component: {fileID: 8045138635086140658}
   - component: {fileID: 8039255882697157949}
   - component: {fileID: 8452318880774885986}
+  - component: {fileID: 3008468505300814615}
   m_Layer: 6
   m_Name: Enemy
   m_TagString: Untagged
@@ -1164,9 +1121,31 @@ MonoBehaviour:
   movementConfig: {fileID: 11400000, guid: 5a37bb5a3572e5d458d016db46fb76fb, type: 2}
   pathfindingConfig: {fileID: 11400000, guid: 3ac17f59fcbe29546931bbbbb986201f, type: 2}
   aiConfig: {fileID: 11400000, guid: ba58c22950fe11846ba78fc30cb4aed1, type: 2}
-  controller: {fileID: 0}
+  controller: {fileID: 8039255882697157949}
   animator: {fileID: 6740742537238954059}
+  turret: {fileID: 1945766891092417179}
+  weaponBarrel: {fileID: 2327516486087737101}
   botID: 
+--- !u!114 &3008468505300814615
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5506370006722563975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fcb323913e19ec542bf1f976d1af9deb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  availableProjectiles:
+  - {fileID: 8801266385320015286, guid: 96cc4bea6137d324fbd61609b9850900, type: 3}
+  shootInterval: 1
+  shootForce: 20
+  turretRotationSpeed: 180
+  maxAimAngle: 15
+  useLeadTarget: 1
+  leadAmount: 0.5
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0

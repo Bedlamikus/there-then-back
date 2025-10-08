@@ -146,7 +146,7 @@ public class GameBootstrap : MonoBehaviour
             yield break;
         }
         
-        Debug.Log("GameBootstrap: Спавн игрока...");
+        Debug.Log("[Player] Спавн игрока...");
         
         // Определяем позицию спавна
         Vector3 spawnPosition;
@@ -159,28 +159,33 @@ public class GameBootstrap : MonoBehaviour
             spawnPosition = savedPosition.GetPosition();
             spawnRotation = savedPosition.GetRotation();
             
-            Debug.Log($"GameBootstrap: Найдена сохраненная позиция игрока: {spawnPosition}");
+            Debug.Log($"[Player] Загружена позиция из файла: {spawnPosition}, Rotation: {spawnRotation.eulerAngles}");
             
             // Проверяем, что сохраненная позиция безопасна
             if (!IsPositionSafe(spawnPosition))
             {
-                Debug.LogWarning("GameBootstrap: Сохраненная позиция небезопасна, используем стандартный спавн");
+                Debug.LogWarning($"[Player] Сохраненная позиция небезопасна (Y={spawnPosition.y:F2}), используем стандартный спавн");
                 spawnPosition = voxelWorld.GetSafeSpawnPosition();
                 spawnRotation = Quaternion.identity;
+                Debug.Log($"[Player] Новая безопасная позиция: {spawnPosition}");
+            }
+            else
+            {
+                Debug.Log($"[Player] Сохраненная позиция безопасна, используем ее");
             }
         }
         else
         {
             // Получаем безопасную позицию спавна из VoxelWorld
             spawnPosition = voxelWorld.GetSafeSpawnPosition();
-            Debug.Log($"GameBootstrap: Сохранение не найдено, используем безопасную позицию: {spawnPosition}");
+            Debug.Log($"[Player] Сохранение не найдено, используем безопасную позицию: {spawnPosition}");
         }
         
         // Создаем игрока
         spawnedPlayer = Instantiate(playerPrefab, spawnPosition, spawnRotation);
         spawnedPlayer.name = "Player"; // Убираем (Clone) из имени
         
-        Debug.Log($"GameBootstrap: Игрок создан: {spawnedPlayer.name} в позиции {spawnPosition}");
+        Debug.Log($"[Player] Игрок создан: {spawnedPlayer.name} в позиции {spawnPosition}");
         
         // Если нужно, отключаем игрока пока мир не готов
         if (disablePlayerUntilReady && !voxelWorld.IsWorldReady)
@@ -206,7 +211,7 @@ public class GameBootstrap : MonoBehaviour
             }
         }
         
-        Debug.Log("GameBootstrap: Игрок готов к игре!");
+        Debug.Log("[Player] Игрок готов к игре!");
     }
     
     /// <summary>
@@ -355,7 +360,7 @@ public class GameBootstrap : MonoBehaviour
             controller.enabled = true;
         }
         
-        Debug.Log($"GameBootstrap: Игрок переспавнен в позиции {spawnPosition}");
+        Debug.Log($"[Player] Игрок переспавнен в позиции {spawnPosition}");
     }
     
     // ========== СОХРАНЕНИЕ ПОЗИЦИИ ИГРОКА ==========
@@ -382,12 +387,22 @@ public class GameBootstrap : MonoBehaviour
         if (playerPositionSave == null || spawnedPlayer == null)
             return;
         
+        // Проверяем что игрок на земле перед сохранением
+        PlayerController playerController = spawnedPlayer.GetComponent<PlayerController>();
+        if (playerController != null && !playerController.IsGrounded())
+        {
+            Debug.LogWarning($"[Player] Игрок не на земле (Y={spawnedPlayer.transform.position.y:F2}), пропускаем сохранение");
+            return;
+        }
+        
+        Vector3 currentPosition = spawnedPlayer.transform.position;
+        
         var data = playerPositionSave.Data;
-        data.SetPosition(spawnedPlayer.transform.position);
+        data.SetPosition(currentPosition);
         data.SetRotation(spawnedPlayer.transform.rotation);
         playerPositionSave.Save();
         
-        //Debug.Log($"GameBootstrap: Позиция игрока сохранена: {spawnedPlayer.transform.position}");
+        Debug.Log($"[Player] Позиция игрока сохранена в файл: {currentPosition} (IsGrounded: {playerController?.IsGrounded()})");
     }
     
     /// <summary>
@@ -443,7 +458,7 @@ public class GameBootstrap : MonoBehaviour
         if (playerPositionSave != null)
         {
             playerPositionSave.Delete();
-            Debug.Log("GameBootstrap: Сохранение позиции игрока удалено");
+            Debug.Log("[Player] Сохранение позиции игрока удалено");
         }
     }
     

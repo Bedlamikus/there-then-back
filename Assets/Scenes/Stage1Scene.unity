@@ -130,9 +130,17 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 179407903}
     m_Modifications:
+    - target: {fileID: 805106378052813397, guid: 3592169e40313b046988186004c8d83d, type: 3}
+      propertyPath: spawnableLayerMask.m_Bits
+      value: 64
+      objectReference: {fileID: 0}
     - target: {fileID: 4252562960433248874, guid: 3592169e40313b046988186004c8d83d, type: 3}
       propertyPath: m_Name
       value: DeadZone
+      objectReference: {fileID: 0}
+    - target: {fileID: 8795543457086551305, guid: 3592169e40313b046988186004c8d83d, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 8795543457086551305, guid: 3592169e40313b046988186004c8d83d, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1100,7 +1108,7 @@ MonoBehaviour:
   spawnMode: 0
   enemiesPerSpawn: 1
   maxEnemiesAlive: 10
-  areaMode: 0
+  areaMode: 1
   spawnRadius: 40
   spawnPoints: []
   spawnInterval: 30

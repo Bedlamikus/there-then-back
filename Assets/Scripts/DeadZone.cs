@@ -7,6 +7,8 @@ public class DeadZone : MonoBehaviour
     
     private void OnTriggerEnter(Collider other)
     {
+        Debug.Log($"[DeadZone] OnTriggerEnter: {other.gameObject.name}, Layer: {other.gameObject.layer}, Position: {other.transform.position}");
+        
         // Проверяем, что это сущность из нужного слоя
         if (((1 << other.gameObject.layer) & spawnableLayerMask) != 0)
         {
@@ -14,8 +16,13 @@ public class DeadZone : MonoBehaviour
             ISpawnable spawnable = other.GetComponent<ISpawnable>();
             if (spawnable != null)
             {
+                Debug.Log($"[DeadZone] Сущность '{spawnable.GetSpawnableID()}' попала в зону смерти!");
                 // Уведомляем сервис автоспавна о попадании в зону смерти
                 AutoSpawnService.Instance?.OnEnterDeadZone(spawnable);
+            }
+            else
+            {
+                Debug.LogWarning($"[DeadZone] Объект {other.gameObject.name} в нужном слое, но нет ISpawnable!");
             }
         }
     }

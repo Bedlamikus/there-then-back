@@ -59,7 +59,6 @@ public class EnemyAIStateMachine
         
         // ВАЖНО: Устанавливаем первую точку патруля сразу
         SetNewPatrolTarget();
-        Debug.Log($"[AI Init] Бот инициализирован в состоянии {currentState}. Стартовая позиция: {startPosition}");
     }
     
     public void Update()
@@ -117,9 +116,6 @@ public class EnemyAIStateMachine
         {
             pathfindingService.ResetStuckDetection();
         }
-        
-        string reasonText = string.IsNullOrEmpty(reason) ? "" : $" ({reason})";
-        Debug.Log($"[AI State] {oldState} → {newState}{reasonText}. Позиция: {transform.position}");
     }
     
     private void UpdateAI()
@@ -168,7 +164,8 @@ public class EnemyAIStateMachine
             SetNewPatrolTarget();
         }
         
-        if (distanceToTarget <= config.detectionRange)
+        // Проверка обнаружения цели
+        if (target != null && distanceToTarget <= config.detectionRange)
         {
             positionBeforeChase = transform.position;
             ChangeState(AIState.Chase, $"Обнаружена цель на расстоянии {distanceToTarget:F1}m");
@@ -181,7 +178,6 @@ public class EnemyAIStateMachine
         // Проверяем завершилось ли восстановление от застревания
         if (pathfindingService.JustFinishedRecovery)
         {
-            Debug.Log($"[AI Patrol] Восстановление от застревания завершено. Устанавливаем новую точку патруля.");
             SetNewPatrolTarget();
         }
         
@@ -191,14 +187,14 @@ public class EnemyAIStateMachine
             
             if (distanceToReturn < 2f)
             {
-                Debug.Log($"[AI Patrol] Вернулись к стартовой позиции. Начинаем патрулирование.");
                 isReturningToStart = false;
                 startPosition = positionBeforeChase;
                 SetNewPatrolTarget();
             }
         }
         
-        if (distanceToTarget <= config.detectionRange)
+        // Проверка обнаружения цели
+        if (target != null && distanceToTarget <= config.detectionRange)
         {
             positionBeforeChase = transform.position;
             ChangeState(AIState.Chase, $"Обнаружена цель на расстоянии {distanceToTarget:F1}m");
@@ -217,7 +213,6 @@ public class EnemyAIStateMachine
             if (horizontalDistance < 1f)
             {
                 patrolPointsVisited++;
-                Debug.Log($"[AI Patrol] Достигнута точка патруля #{patrolPointsVisited}/{patrolPointsBeforeRest} (горизонтальное расстояние: {horizontalDistance:F2}m)");
                 
                 if (patrolPointsVisited >= patrolPointsBeforeRest)
                 {
@@ -250,12 +245,6 @@ public class EnemyAIStateMachine
         {
             lastSeenTargetPosition = target.position;
             
-            // Логируем преследование (каждые 2 секунды)
-            if (Time.frameCount % 120 == 0)
-            {
-                float heightDiff = target.position.y - transform.position.y;
-                Debug.Log($"[AI Chase] Преследуем цель. Расст. 3D: {distanceToTarget:F1}m, Гориз: {horizontalDistance:F1}m, Разница высоты: {heightDiff:F1}m");
-            }
         }
         
         if (distanceToTarget > config.detectionRange * config.returnToStartThreshold)
@@ -264,12 +253,10 @@ public class EnemyAIStateMachine
             
             if (TryReturnToStartPosition())
             {
-                Debug.Log($"[AI Chase] Цель потеряна. Возвращаемся к стартовой позиции: {positionBeforeChase}");
                 isReturningToStart = true;
             }
             else
             {
-                Debug.Log($"[AI Chase] Цель потеряна, стартовая позиция недоступна. Патрулируем текущую область.");
                 startPosition = transform.position;
                 ChangeState(AIState.Patrol, "Цель потеряна, стартовая позиция разрушена");
                 patrolPointsVisited = 0;
@@ -325,12 +312,6 @@ public class EnemyAIStateMachine
         direction.y = 0;
         Vector3 normalized = direction.normalized;
         
-        // Временное логирование для отладки
-        if (Time.frameCount % 120 == 0) // Каждые 2 секунды при 60 FPS
-        {
-            Debug.Log($"[AI Patrol Move] Позиция: {transform.position}, Цель: {patrolTarget}, Расст. гориз: {horizontalDistance:F2}m, Расст. полн: {fullDistance:F2}m, Направление: {normalized}");
-        }
-        
         return normalized;
     }
     
@@ -345,8 +326,6 @@ public class EnemyAIStateMachine
     {
         Vector3 safePoint = pathfindingService.FindSafePatrolPoint(startPosition, config.patrolRadius, config.minPatrolDistance);
         patrolTarget = safePoint;
-        float distance = Vector3.Distance(transform.position, patrolTarget);
-        Debug.Log($"[AI Patrol] Новая точка патруля: {patrolTarget} (расстояние: {distance:F1}m)");
     }
     
     private bool TryReturnToStartPosition()
@@ -407,7 +386,7 @@ public class EnemyAIStateMachine
             
             if (fallingTimer >= config.maxFallingTime)
             {
-                Debug.Log($"Бот '{spawnable.GetSpawnableID()}' падает слишком долго ({fallingTimer:F1}s), инициируем респавн");
+                Debug.Log($"[Bot] Бот '{spawnable.GetSpawnableID()}' падает слишком долго, инициируем респавн");
                 AutoSpawnService.Instance?.OnEnterDeadZone(spawnable);
                 fallingTimer = 0f;
             }

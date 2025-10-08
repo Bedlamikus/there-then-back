@@ -81,7 +81,7 @@ public class PlayerController : MonoBehaviour, ISpawnable
         HandleMovement();
         
         // Обновление сервиса автоспавна
-        AutoSpawnService.Instance?.Tick(Time.deltaTime);
+        AutoSpawnService.Instance?.TickSpawnable(this, Time.deltaTime);
     }
 
     void HandleMovement()

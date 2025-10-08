@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 170bf1ecb354941429ab9b5d34c07833, type: 3}
   m_Name: EnemyMovementConfig
   m_EditorClassIdentifier: 
-  moveSpeed: 6
-  turnSpeed: 15
+  moveSpeed: 5
+  turnSpeed: 10
   turnThreshold: 0.1
   jumpHeight: 3
   jumpPrepareTime: 0.1

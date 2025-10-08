@@ -280,15 +280,15 @@ public class EnemySpawner : MonoBehaviour
             GameObject enemy = Instantiate(enemyPrefab, spawnPosition, Quaternion.identity);
             enemy.name = $"Enemy_{currentWave}_{spawned + 1}";
             
-            // Настраиваем EnemyBot если есть
+            // Инициализируем EnemyBot если есть
             EnemyBot bot = enemy.GetComponent<EnemyBot>();
             if (bot != null && targetPlayer != null)
             {
-                bot.SetTarget(targetPlayer);
+                bot.Init(targetPlayer);
             }
             else if (bot != null && targetPlayer == null)
             {
-                Debug.LogWarning($"EnemySpawner [{name}]: targetPlayer is null, cannot set target for bot {bot.name}");
+                Debug.LogWarning($"EnemySpawner [{name}]: targetPlayer is null, cannot initialize bot {bot.name}");
             }
             
             spawnedEnemies.Add(enemy);
