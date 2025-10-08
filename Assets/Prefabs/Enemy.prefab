@@ -1125,6 +1125,7 @@ MonoBehaviour:
   animator: {fileID: 6740742537238954059}
   turret: {fileID: 1945766891092417179}
   weaponBarrel: {fileID: 2327516486087737101}
+  shootPoint: {fileID: 6748206111318845224}
   botID: 
 --- !u!114 &3008468505300814615
 MonoBehaviour:
@@ -1141,9 +1142,11 @@ MonoBehaviour:
   availableProjectiles:
   - {fileID: 8801266385320015286, guid: 96cc4bea6137d324fbd61609b9850900, type: 3}
   shootInterval: 1
-  shootForce: 20
   turretRotationSpeed: 180
-  maxAimAngle: 15
+  maxAimAngle: 60
+  barrelPitchSpeed: 90
+  minBarrelPitch: -10
+  maxBarrelPitch: 45
   useLeadTarget: 1
   leadAmount: 0.5
 --- !u!1 &5563819542688433683
