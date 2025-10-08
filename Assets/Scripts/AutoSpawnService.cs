@@ -176,8 +176,6 @@ public class AutoSpawnService
         data.lastSavedPosition = data.spawnable.GetTransform().position;
         data.hasValidSavePosition = true;
         data.lastSaveTime = Time.time;
-        
-        Debug.Log($"Позиция '{data.spawnable.GetSpawnableID()}' сохранена: {data.lastSavedPosition}");
     }
     
     public void OnPlayerEnterDeadZone(PlayerController deadPlayer)

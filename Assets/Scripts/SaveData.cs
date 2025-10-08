@@ -69,8 +69,6 @@ public class SaveData<T> where T : class, new()
             PlayerPrefs.Save(); // Принудительно записываем на диск
             
             isDirty = false;
-            
-            Debug.Log($"SaveData [{saveKey}]: Данные сохранены успешно ({json.Length} символов)");
         }
         catch (Exception e)
         {

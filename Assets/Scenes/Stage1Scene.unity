@@ -1097,8 +1097,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enemyPrefab: {fileID: 5506370006722563975, guid: 90a172b178a92fd4ba3a7af273a575a7, type: 3}
-  spawnMode: 2
-  enemiesPerSpawn: 3
+  spawnMode: 0
+  enemiesPerSpawn: 1
   maxEnemiesAlive: 10
   areaMode: 0
   spawnRadius: 40

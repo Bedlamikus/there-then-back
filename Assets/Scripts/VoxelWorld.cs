@@ -502,6 +502,27 @@ public class VoxelWorld : MonoBehaviour
         return SetBlock(tx, ty, tz, blockType, true);
     }
     
+    // === Публичные методы для получения размеров мира ===
+    public int GetWorldWidth()
+    {
+        return chunksX * VoxelChunk16.WIDTH;
+    }
+    
+    public int GetWorldDepth()
+    {
+        return chunksZ * VoxelChunk16.DEPTH;
+    }
+    
+    public int GetWorldHeight()
+    {
+        return VoxelChunk16.HEIGHT;
+    }
+    
+    public Vector3 GetWorldSize()
+    {
+        return new Vector3(GetWorldWidth(), GetWorldHeight(), GetWorldDepth());
+    }
+    
     // === Публичный метод для проверки наличия блока ===
     public bool HasBlockAt(int wx, int wy, int wz)
     {

@@ -123,10 +123,14 @@ public class EnemySpawner : MonoBehaviour
                 targetPlayer = player.transform;
                 Debug.Log($"EnemySpawner [{name}]: Игрок найден автоматически: {targetPlayer.name}");
             }
-            else if (areaMode == SpawnAreaMode.AroundTarget)
+            else
             {
-                Debug.LogWarning($"EnemySpawner [{name}]: Игрок не найден, используется режим RandomInRadius");
-                areaMode = SpawnAreaMode.RandomInRadius;
+                Debug.LogWarning($"EnemySpawner [{name}]: PlayerController не найден в сцене!");
+                if (areaMode == SpawnAreaMode.AroundTarget)
+                {
+                    Debug.LogWarning($"EnemySpawner [{name}]: Игрок не найден, используется режим RandomInRadius");
+                    areaMode = SpawnAreaMode.RandomInRadius;
+                }
             }
         }
         
@@ -281,6 +285,10 @@ public class EnemySpawner : MonoBehaviour
             if (bot != null && targetPlayer != null)
             {
                 bot.SetTarget(targetPlayer);
+            }
+            else if (bot != null && targetPlayer == null)
+            {
+                Debug.LogWarning($"EnemySpawner [{name}]: targetPlayer is null, cannot set target for bot {bot.name}");
             }
             
             spawnedEnemies.Add(enemy);

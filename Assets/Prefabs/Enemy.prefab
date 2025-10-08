@@ -1161,30 +1161,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  target: {fileID: 0}
-  autoFindPlayer: 1
-  moveSpeed: 4
-  turnSpeed: 5
-  turnThreshold: 0.1
-  detectionRange: 20
-  attackRange: 2
-  patrolRadius: 10
-  patrolWaitTime: 2
-  minPatrolDistance: 3
-  jumpHeight: 3.5
-  coyoteTime: 0.1
-  canJump: 1
-  usePathfinding: 1
-  pathUpdateInterval: 1
-  maxPathLength: 50
-  waypointReachDistance: 1.5
-  stuckCheckTime: 1
-  stuckDistanceThreshold: 0.5
-  gravity: -9.81
-  groundCheckDistance: 0.2
+  movementConfig: {fileID: 11400000, guid: 5a37bb5a3572e5d458d016db46fb76fb, type: 2}
+  pathfindingConfig: {fileID: 11400000, guid: 3ac17f59fcbe29546931bbbbb986201f, type: 2}
+  aiConfig: {fileID: 11400000, guid: ba58c22950fe11846ba78fc30cb4aed1, type: 2}
+  controller: {fileID: 0}
   animator: {fileID: 6740742537238954059}
-  speedParameter: Speed
-  isGroundedParameter: IsGrounded
+  botID: 
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0
