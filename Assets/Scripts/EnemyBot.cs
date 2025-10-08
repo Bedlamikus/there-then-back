@@ -5,8 +5,11 @@ using UnityEngine;
 /// Использует CharacterController и те же механики движения, но с AI логикой
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
-public class EnemyBot : MonoBehaviour
+public class EnemyBot : MonoBehaviour, ISpawnable
 {
+    [Header("Bot ID")]
+    [Tooltip("Уникальный ID бота для системы спавна")]
+    public string botID;
     [Header("Target")]
     [Tooltip("Цель для преследования (обычно игрок)")]
     public Transform target;
@@ -97,8 +100,15 @@ public class EnemyBot : MonoBehaviour
         startPosition = transform.position;
         stuckCheckPosition = transform.position;
         
-        // Поиск VoxelWorld для pathfinding
-        voxelWorld = VoxelWorld.Instance;
+        // Генерируем уникальный ID если не задан
+        if (string.IsNullOrEmpty(botID))
+        {
+            botID = $"Bot_{GetInstanceID()}_{Random.Range(1000, 9999)}";
+            Debug.Log($"EnemyBot [{name}]: Сгенерирован ID: {botID}");
+        }
+        
+        // Поиск VoxelWorld для pathfinding - ищем по скрипту, а не по Instance
+        voxelWorld = FindObjectOfType<VoxelWorld>();
         if (voxelWorld == null)
         {
             Debug.LogWarning($"EnemyBot [{name}]: VoxelWorld не найден! Pathfinding отключен.");
@@ -110,6 +120,9 @@ public class EnemyBot : MonoBehaviour
         {
             FindPlayer();
         }
+        
+        // Регистрируем бота в AutoSpawnService
+        AutoSpawnService.Instance?.RegisterSpawnable(this);
         
         // Начинаем с патрулирования
         currentState = AIState.Patrol;
@@ -129,6 +142,9 @@ public class EnemyBot : MonoBehaviour
         
         // Анимация
         UpdateAnimation();
+        
+        // Обновление сервиса автоспавна
+        AutoSpawnService.Instance?.TickSpawnable(this, Time.deltaTime);
     }
 
     void UpdateAI()
@@ -680,6 +696,34 @@ public class EnemyBot : MonoBehaviour
                 Gizmos.DrawWireSphere(currentPath[currentWaypointIndex], 0.5f);
             }
         }
+    }
+    
+    // ========== ISpawnable Implementation ==========
+    
+    public string GetSpawnableID()
+    {
+        return botID;
+    }
+    
+    public Transform GetTransform()
+    {
+        return transform;
+    }
+    
+    public GameObject GetGameObject()
+    {
+        return gameObject;
+    }
+    
+    public bool IsGrounded()
+    {
+        return _grounded;
+    }
+    
+    void OnDestroy()
+    {
+        // Отписываемся от AutoSpawnService при уничтожении
+        AutoSpawnService.Instance?.UnregisterSpawnable(this);
     }
 }
 

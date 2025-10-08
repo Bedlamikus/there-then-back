@@ -3,18 +3,19 @@ using UnityEngine;
 public class DeadZone : MonoBehaviour
 {
     [Header("Dead Zone Settings")]
-    public LayerMask playerLayerMask = 1; // Слой игрока
+    public LayerMask spawnableLayerMask = 1; // Слои для игрока и ботов
     
     private void OnTriggerEnter(Collider other)
     {
-        // Проверяем, что это игрок
-        if (((1 << other.gameObject.layer) & playerLayerMask) != 0)
+        // Проверяем, что это сущность из нужного слоя
+        if (((1 << other.gameObject.layer) & spawnableLayerMask) != 0)
         {
-            PlayerController player = other.GetComponent<PlayerController>();
-            if (player != null)
+            // Проверяем наличие ISpawnable интерфейса
+            ISpawnable spawnable = other.GetComponent<ISpawnable>();
+            if (spawnable != null)
             {
                 // Уведомляем сервис автоспавна о попадании в зону смерти
-                AutoSpawnService.Instance?.OnPlayerEnterDeadZone(player);
+                AutoSpawnService.Instance?.OnEnterDeadZone(spawnable);
             }
         }
     }

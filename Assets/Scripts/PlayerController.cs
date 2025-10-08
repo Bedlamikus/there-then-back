@@ -1,7 +1,7 @@
 using UnityEngine;
 
 [RequireComponent(typeof(CharacterController))]
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviour, ISpawnable
 {
     public Transform cameraPivot;                 // Направление WASD движений по yaw камеры
 
@@ -191,5 +191,27 @@ public class PlayerController : MonoBehaviour
                 cameraPivot = Camera.main.transform;
             return cameraPivot;
         }
+    }
+    
+    // ========== ISpawnable Implementation ==========
+    
+    public string GetSpawnableID()
+    {
+        return "Player"; // У игрока всегда один ID
+    }
+    
+    public Transform GetTransform()
+    {
+        return transform;
+    }
+    
+    public GameObject GetGameObject()
+    {
+        return gameObject;
+    }
+    
+    public bool IsGrounded()
+    {
+        return _grounded;
     }
 }

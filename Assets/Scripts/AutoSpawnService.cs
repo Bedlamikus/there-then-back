@@ -1,21 +1,28 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class AutoSpawnService
 {
     public static AutoSpawnService Instance { get; private set; }
     
-    [Header("Auto Spawn Settings")]
+    // Auto Spawn Settings
     private float saveInterval = 5f; // Интервал сохранения позиции в секундах
-    private float lastSaveTime = 0f;
-    private Vector3 lastSavedPosition;
-    private bool hasValidSavePosition = false;
     
-    private PlayerController player;
+    // Данные для каждой сущности
+    private class SpawnableData
+    {
+        public ISpawnable spawnable;
+        public Vector3 lastSavedPosition;
+        public Vector3 startPosition;
+        public float lastSaveTime;
+        public bool hasValidSavePosition;
+    }
+    
+    private Dictionary<string, SpawnableData> spawnables = new Dictionary<string, SpawnableData>();
     private VoxelWorld voxelWorld;
     private bool isWaitingForVoxelWorld = false;
     private float lastVoxelWorldCheckTime = 0f;
     private float voxelWorldCheckInterval = 0.5f; // Проверяем каждые 0.5 секунды
-    private Vector3 startPosition; // Стартовая позиция игрока для сброса мира
     
     public AutoSpawnService()
     {
@@ -39,20 +46,52 @@ public class AutoSpawnService
     
     public void Initialize(PlayerController playerController)
     {
-        player = playerController;
-        
         // Пытаемся найти VoxelWorld
         TryFindVoxelWorld();
         
-        // Сохраняем стартовую позицию игрока (для сброса мира)
-        startPosition = player.transform.position;
+        // Регистрируем игрока через новый API
+        RegisterSpawnable(playerController);
         
-        // Сохраняем начальную позицию игрока
-        lastSavedPosition = player.transform.position;
-        hasValidSavePosition = true;
-        lastSaveTime = Time.time;
+        Debug.Log($"AutoSpawnService инициализирован");
+    }
+    
+    /// <summary>
+    /// Регистрация сущности в системе автоспавна
+    /// </summary>
+    public void RegisterSpawnable(ISpawnable spawnable)
+    {
+        string id = spawnable.GetSpawnableID();
         
-        Debug.Log($"AutoSpawnService инициализирован для игрока {player.name}, стартовая позиция: {startPosition}");
+        if (spawnables.ContainsKey(id))
+        {
+            Debug.LogWarning($"AutoSpawnService: Сущность с ID '{id}' уже зарегистрирована!");
+            return;
+        }
+        
+        var data = new SpawnableData
+        {
+            spawnable = spawnable,
+            startPosition = spawnable.GetTransform().position,
+            lastSavedPosition = spawnable.GetTransform().position,
+            hasValidSavePosition = true,
+            lastSaveTime = Time.time
+        };
+        
+        spawnables[id] = data;
+        Debug.Log($"AutoSpawnService: Зарегистрирована сущность '{id}' на позиции {data.startPosition}");
+    }
+    
+    /// <summary>
+    /// Отменить регистрацию сущности
+    /// </summary>
+    public void UnregisterSpawnable(ISpawnable spawnable)
+    {
+        string id = spawnable.GetSpawnableID();
+        
+        if (spawnables.Remove(id))
+        {
+            Debug.Log($"AutoSpawnService: Сущность '{id}' удалена из системы");
+        }
     }
     
     private void TryFindVoxelWorld()
@@ -73,7 +112,33 @@ public class AutoSpawnService
     
     public void Tick(float deltaTime)
     {
-        if (player == null) return;
+        // Старый API - для совместимости с PlayerController
+        // Теперь не используется, вместо него используется TickSpawnable
+        
+        // Если ждем VoxelWorld, проверяем его появление с интервалом
+        if (isWaitingForVoxelWorld)
+        {
+            float currentTime = Time.time;
+            if (currentTime - lastVoxelWorldCheckTime >= voxelWorldCheckInterval)
+            {
+                TryFindVoxelWorld();
+                lastVoxelWorldCheckTime = currentTime;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Обновление для конкретной сущности
+    /// </summary>
+    public void TickSpawnable(ISpawnable spawnable, float deltaTime)
+    {
+        string id = spawnable.GetSpawnableID();
+        
+        if (!spawnables.TryGetValue(id, out var data))
+        {
+            Debug.LogWarning($"AutoSpawnService: Сущность '{id}' не зарегистрирована!");
+            return;
+        }
         
         // Если ждем VoxelWorld, проверяем его появление с интервалом
         if (isWaitingForVoxelWorld)
@@ -86,90 +151,90 @@ public class AutoSpawnService
             }
         }
         
-        // Проверяем, нужно ли сохранить позицию
-        CheckForPositionSave();
+        // Проверяем, нужно ли сохранить позицию этой сущности
+        CheckForPositionSave(data);
     }
     
-    private void CheckForPositionSave()
+    private void CheckForPositionSave(SpawnableData data)
     {
         float currentTime = Time.time;
         
         // Если прошло достаточно времени с последнего сохранения
-        if (currentTime - lastSaveTime >= saveInterval)
+        if (currentTime - data.lastSaveTime >= saveInterval)
         {
-            // Проверяем, находится ли игрок на земле
-            if (IsPlayerOnGround())
+            // Проверяем, находится ли сущность на земле
+            if (data.spawnable.IsGrounded())
             {
-                SavePlayerPosition();
+                SavePosition(data);
             }
-            // Если игрок не на земле, ждем пока он окажется на земле
+            // Если не на земле, ждем пока окажется на земле
         }
     }
     
-    private bool IsPlayerOnGround()
+    private void SavePosition(SpawnableData data)
     {
-        if (player == null) return false;
+        data.lastSavedPosition = data.spawnable.GetTransform().position;
+        data.hasValidSavePosition = true;
+        data.lastSaveTime = Time.time;
         
-        // Используем CharacterController для проверки земли
-        CharacterController controller = player.GetComponent<CharacterController>();
-        return controller != null && controller.isGrounded;
-    }
-    
-    private void SavePlayerPosition()
-    {
-        if (player == null) return;
-        
-        lastSavedPosition = player.transform.position;
-        hasValidSavePosition = true;
-        lastSaveTime = Time.time;
-        
-        Debug.Log($"Позиция игрока сохранена: {lastSavedPosition}");
+        Debug.Log($"Позиция '{data.spawnable.GetSpawnableID()}' сохранена: {data.lastSavedPosition}");
     }
     
     public void OnPlayerEnterDeadZone(PlayerController deadPlayer)
     {
-        if (deadPlayer != player)
+        // Старый API для совместимости
+        OnEnterDeadZone(deadPlayer);
+    }
+    
+    /// <summary>
+    /// Обработка попадания сущности в зону смерти
+    /// </summary>
+    public void OnEnterDeadZone(ISpawnable spawnable)
+    {
+        string id = spawnable.GetSpawnableID();
+        
+        if (!spawnables.TryGetValue(id, out var data))
         {
-            Debug.LogWarning("Получено уведомление о смерти от другого игрока!");
+            Debug.LogWarning($"AutoSpawnService: Сущность '{id}' не зарегистрирована в системе спавна!");
             return;
         }
         
-        Debug.Log("Игрок попал в зону смерти! Инициируем спавн...");
+        Debug.Log($"Сущность '{id}' попала в зону смерти! Инициируем спавн...");
         
-        // Скрываем игрока
-        player.gameObject.SetActive(false);
+        // Скрываем сущность
+        spawnable.GetGameObject().SetActive(false);
         
         // Находим безопасную позицию для спавна
-        Vector3 spawnPosition = FindSafeSpawnPosition();
+        Vector3 spawnPosition = FindSafeSpawnPosition(data);
         
-        // Перемещаем игрока
-        player.transform.position = spawnPosition;
+        // Перемещаем сущность
+        spawnable.GetTransform().position = spawnPosition;
         
-        // Показываем игрока
-        player.gameObject.SetActive(true);
+        // Показываем сущность
+        spawnable.GetGameObject().SetActive(true);
         
-        Debug.Log($"Игрок заспавнен в позиции: {spawnPosition}");
+        Debug.Log($"Сущность '{id}' заспавнена в позиции: {spawnPosition}");
     }
     
-    private Vector3 FindSafeSpawnPosition()
+    private Vector3 FindSafeSpawnPosition(SpawnableData data)
     {
         if (voxelWorld == null)
         {
-            Debug.LogWarning("VoxelWorld не найден! Возвращаем стартовую позицию.");
-            return startPosition;
+            Debug.LogWarning($"VoxelWorld не найден! Возвращаем стартовую позицию для '{data.spawnable.GetSpawnableID()}'");
+            return data.startPosition;
         }
         
         // Сначала проверяем последнюю сохраненную позицию
-        if (hasValidSavePosition && IsPositionSafe(lastSavedPosition))
+        if (data.hasValidSavePosition && IsPositionSafe(data.lastSavedPosition))
         {
-            Debug.Log("Последняя сохраненная позиция безопасна, используем её");
-            return lastSavedPosition;
+            Debug.Log($"Последняя сохраненная позиция '{data.spawnable.GetSpawnableID()}' безопасна");
+            return data.lastSavedPosition;
         }
         
-        Debug.Log("Последняя сохраненная позиция небезопасна, ищем новую...");
+        Debug.Log($"Последняя сохраненная позиция '{data.spawnable.GetSpawnableID()}' небезопасна, ищем новую...");
         
         // Ищем точки ниже сохраненной позиции
-        Vector3 safePosition = FindSafePositionBelow(lastSavedPosition);
+        Vector3 safePosition = FindSafePositionBelow(data.lastSavedPosition);
         if (safePosition != Vector3.zero)
         {
             Debug.Log($"Найдена безопасная позиция ниже: {safePosition}");
@@ -177,17 +242,21 @@ public class AutoSpawnService
         }
         
         // Если не найдено ниже, ищем по чанкам сверху вниз
-        safePosition = FindSafePositionInChunks();
+        safePosition = FindSafePositionInChunks(data.lastSavedPosition);
         if (safePosition != Vector3.zero)
         {
             Debug.Log($"Найдена безопасная позиция в чанках: {safePosition}");
             return safePosition;
         }
         
-        // Если весь мир разрушен, сбрасываем мир
-        Debug.LogWarning("Весь мир разрушен! Сбрасываем мир и возвращаемся на стартовую позицию.");
-        ResetWorld();
-        return startPosition;
+        // Если весь мир разрушен и это игрок - сбрасываем мир
+        if (data.spawnable.GetSpawnableID() == "Player")
+        {
+            Debug.LogWarning("Весь мир разрушен! Сбрасываем мир и возвращаемся на стартовую позицию.");
+            ResetWorld();
+        }
+        
+        return data.startPosition;
     }
     
     private bool IsPositionSafe(Vector3 position)
@@ -195,23 +264,19 @@ public class AutoSpawnService
         if (voxelWorld == null) 
         {
             // Если VoxelWorld еще не найден, считаем позицию безопасной если она не слишком низко
-            bool safe = position.y > -10f;
-            Debug.Log($"VoxelWorld не найден, проверка высоты: {position.y} > -10 = {safe}");
-            return safe;
+            return position.y > -10f;
         }
         
-        // Проверяем, что позиция в пределах мира
-        bool inBounds = position.x >= 0 && position.z >= 0 && position.x < voxelWorld.chunksX * VoxelChunk16.WIDTH && position.z < voxelWorld.chunksZ * VoxelChunk16.DEPTH;
-        if (!inBounds)
+        // Проверяем, что позиция в пределах мира (по горизонтали)
+        if (position.x < 0 || position.z < 0 || position.x >= voxelWorld.chunksX * VoxelChunk16.WIDTH || position.z >= voxelWorld.chunksZ * VoxelChunk16.DEPTH)
         {
-            Debug.Log($"Позиция вне границ мира: {position}, границы: (0,0) - ({voxelWorld.chunksX * VoxelChunk16.WIDTH}, {voxelWorld.chunksZ * VoxelChunk16.DEPTH})");
             return false;
         }
         
-        // Проверяем, есть ли блок под ногами игрока (игрок стоит НА блоке, поэтому проверяем блок ниже)
-        Vector3 checkPosition = position + Vector3.down * 1.0f; // Проверяем блок на 1 единицу ниже
+        // Проверяем, есть ли блок под ногами игрока
+        Vector3 checkPosition = position + Vector3.down * 1.0f;
         
-        // Проверяем несколько точек вокруг позиции игрока (игрок стоит на блоке, а не внутри него)
+        // Проверяем несколько точек вокруг позиции игрока
         Vector3[] checkPoints = {
             checkPosition,
             checkPosition + Vector3.left * 0.4f,
@@ -221,92 +286,54 @@ public class AutoSpawnService
         };
         
         bool hasGround = false;
-        int groundPoints = 0;
         foreach (Vector3 point in checkPoints)
         {
-            bool hasBlock = HasSolidBlockAt(point);
-            if (hasBlock) groundPoints++;
-            Debug.Log($"Проверка земли в точке {point}: {hasBlock}");
+            if (HasSolidBlockAt(point))
+            {
+                hasGround = true;
+                break;
+            }
         }
         
-        hasGround = groundPoints > 0;
-        Debug.Log($"Проверка земли завершена: {groundPoints}/5 точек имеют блоки, hasGround = {hasGround}");
+        if (!hasGround) return false;
         
-        if (!hasGround) 
+        // Проверяем, что над головой игрока нет блоков (игрок высотой 2.3)
+        Vector3 headPosition = position + Vector3.up * 2.5f;
+        if (HasSolidBlockAt(headPosition))
         {
-            Debug.Log($"Нет земли под ногами в позиции {position}");
-            return false;
-        }
-        
-        // Дополнительно проверяем, что над головой игрока нет блоков (игрок высотой 2.3)
-        Vector3 headPosition = position + Vector3.up * 2.5f; // Добавляем запас
-        bool hasBlockAbove = HasSolidBlockAt(headPosition);
-        Debug.Log($"Проверка блока над головой в точке {headPosition}: {hasBlockAbove}");
-        
-        if (hasBlockAbove)
-        {
-            Debug.Log($"Есть блок над головой в позиции {position}");
             return false; // Есть блок над головой
         }
         
-        Debug.Log($"✓ Позиция {position} безопасна!");
         return true;
     }
     
     private bool HasSolidBlockAt(Vector3 worldPosition)
     {
-        if (voxelWorld == null) 
-        {
-            Debug.Log($"VoxelWorld не найден, HasSolidBlockAt({worldPosition}) = false");
-            return false;
-        }
+        if (voxelWorld == null) return false;
         
         // Конвертируем мировую позицию в координаты блока
         int blockX = Mathf.FloorToInt(worldPosition.x);
         int blockY = Mathf.FloorToInt(worldPosition.y);
         int blockZ = Mathf.FloorToInt(worldPosition.z);
         
-        Debug.Log($"Проверка блока в мировых координатах {worldPosition} -> блочные координаты ({blockX}, {blockY}, {blockZ})");
-        
         // Проверяем, что координаты в пределах мира
         if (blockX < 0 || blockZ < 0 || blockY < 0 || blockY >= VoxelChunk16.HEIGHT) 
-        {
-            Debug.Log($"Координаты вне пределов мира: x={blockX}, y={blockY}, z={blockZ}");
             return false;
-        }
         if (blockX >= voxelWorld.chunksX * VoxelChunk16.WIDTH || blockZ >= voxelWorld.chunksZ * VoxelChunk16.DEPTH) 
-        {
-            Debug.Log($"Координаты вне пределов мира: x={blockX} >= {voxelWorld.chunksX * VoxelChunk16.WIDTH}, z={blockZ} >= {voxelWorld.chunksZ * VoxelChunk16.DEPTH}");
             return false;
-        }
-        
-        // Получаем данные чанка
-        int chunkX = blockX / VoxelChunk16.WIDTH;
-        int chunkZ = blockZ / VoxelChunk16.DEPTH;
-        int localX = blockX % VoxelChunk16.WIDTH;
-        int localZ = blockZ % VoxelChunk16.DEPTH;
-        
-        Debug.Log($"Чанк координаты: chunkX={chunkX}, chunkZ={chunkZ}, localX={localX}, localZ={localZ}");
         
         // Проверяем через прямой доступ к данным чанка (более надежно)
         bool hasBlockInChunk = voxelWorld.HasBlockAt(blockX, blockY, blockZ);
-        Debug.Log($"Прямая проверка блока в чанке ({blockX}, {blockY}, {blockZ}): {hasBlockInChunk}");
         
         // Дополнительно проверяем через Raycast для коллайдеров
-        RaycastHit hit;
-        Vector3 rayStart = worldPosition + Vector3.up * 0.1f;
-        bool hasHit = Physics.Raycast(rayStart, Vector3.down, out hit, 1.5f);
-        
-        Debug.Log($"Raycast от {rayStart} вниз на 1.5f: hit={hasHit}");
-        if (hasHit)
+        if (!hasBlockInChunk)
         {
-            Debug.Log($"Raycast попал в: {hit.collider.name} в точке {hit.point}");
+            RaycastHit hit;
+            Vector3 rayStart = worldPosition + Vector3.up * 0.1f;
+            return Physics.Raycast(rayStart, Vector3.down, out hit, 1.5f);
         }
         
-        // Используем результат чанка как основной, Raycast как дополнительный
-        bool finalResult = hasBlockInChunk || hasHit;
-        Debug.Log($"Итоговый результат: ChunkData={hasBlockInChunk}, Raycast={hasHit}, Final={finalResult}");
-        return finalResult;
+        return hasBlockInChunk;
     }
     
     
@@ -342,13 +369,13 @@ public class AutoSpawnService
         return Vector3.zero;
     }
     
-    private Vector3 FindSafePositionInChunks()
+    private Vector3 FindSafePositionInChunks(Vector3 savedPosition)
     {
         Debug.Log("Ищем безопасную позицию по чанкам сверху вниз");
         
         // Начинаем с чанка, где была сохраненная позиция
-        int startChunkX = Mathf.FloorToInt(lastSavedPosition.x / VoxelChunk16.WIDTH);
-        int startChunkZ = Mathf.FloorToInt(lastSavedPosition.z / VoxelChunk16.DEPTH);
+        int startChunkX = Mathf.FloorToInt(savedPosition.x / VoxelChunk16.WIDTH);
+        int startChunkZ = Mathf.FloorToInt(savedPosition.z / VoxelChunk16.DEPTH);
         
         // Проверяем чанки по спирали от стартового
         for (int radius = 0; radius < Mathf.Max(voxelWorld.chunksX, voxelWorld.chunksZ); radius++)
@@ -384,15 +411,13 @@ public class AutoSpawnService
     
     private Vector3 FindSafePositionInChunk(int chunkX, int chunkZ)
     {
-        Debug.Log($"Ищем безопасную позицию в чанке ({chunkX}, {chunkZ}) сверху вниз");
-        
         // Проверяем чанк сверху вниз послойно
         for (int y = VoxelChunk16.HEIGHT - 1; y >= 0; y--)
         {
             // Проверяем несколько точек в чанке на этой высоте
-            for (int localX = 0; localX < VoxelChunk16.WIDTH; localX += 2) // Шаг 2 для оптимизации
+            for (int localX = 1; localX < VoxelChunk16.WIDTH - 1; localX += 4) // Шаг 4 для оптимизации
             {
-                for (int localZ = 0; localZ < VoxelChunk16.DEPTH; localZ += 2)
+                for (int localZ = 1; localZ < VoxelChunk16.DEPTH - 1; localZ += 4)
                 {
                     int worldX = chunkX * VoxelChunk16.WIDTH + localX;
                     int worldZ = chunkZ * VoxelChunk16.DEPTH + localZ;
@@ -401,14 +426,13 @@ public class AutoSpawnService
                     
                     if (IsPositionSafe(testPosition))
                     {
-                        Debug.Log($"Найдена безопасная позиция в чанке ({chunkX}, {chunkZ}) на высоте {y}: {testPosition}");
+                        Debug.Log($"✓ Найдена безопасная позиция в чанке ({chunkX}, {chunkZ}) на Y={y}: {testPosition}");
                         return testPosition;
                     }
                 }
             }
         }
         
-        Debug.Log($"Не найдено безопасных позиций в чанке ({chunkX}, {chunkZ})");
         return Vector3.zero;
     }
     
