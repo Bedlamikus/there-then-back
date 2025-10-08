@@ -41,9 +41,9 @@ public class VoxelWorld : MonoBehaviour
     public bool useProgressiveGeneration = true;   // Постепенная генерация
     public int minFramesPerChunk = 1;              // Минимум кадров на чанк
     public int maxFramesPerChunk = 5;              // Максимум кадров на чанк
-    private bool isGenerating = false;
     
-    // Флаг готовности мира
+    // Флаги состояния мира
+    public bool IsGenerating { get; private set; } = false;
     public bool IsWorldReady { get; private set; } = false;
 
     void Awake()
@@ -66,7 +66,7 @@ public class VoxelWorld : MonoBehaviour
     /// </summary>
     System.Collections.IEnumerator InitializeWorld()
     {
-        isGenerating = true;
+        IsGenerating = true;
         
         var settings = gameSettings.Load();
         
@@ -107,7 +107,7 @@ public class VoxelWorld : MonoBehaviour
             }
         }
         
-        isGenerating = false;
+        IsGenerating = false;
         IsWorldReady = true;
         Debug.Log($"VoxelWorld: Инициализация завершена ({_chunks.Count} чанков), мир готов!");
     }

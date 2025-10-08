@@ -39,8 +39,11 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     public float pathUpdateInterval = 1f;        // Интервал обновления пути (секунды)
     public int maxPathLength = 50;               // Максимальная длина пути
     public float waypointReachDistance = 1.5f;   // Дистанция достижения точки пути
-    public float stuckCheckTime = 1f;            // Время для проверки застревания
-    public float stuckDistanceThreshold = 0.5f;  // Минимальное расстояние для незастревания
+    public float stuckCheckTime = 2f;            // Время для проверки застревания
+    public float stuckDistanceThreshold = 1f;    // Минимальное расстояние для незастревания
+    public float stuckAreaSize = 4f;             // Размер области застревания (4x4x4)
+    public int maxStuckAttempts = 3;             // Максимум попыток выбраться
+    public float unstuckPatrolTime = 5f;         // Время патруля после застревания
 
     [Header("Gravity")]
     public float gravity = -9.81f;               // Сила гравитации
@@ -83,7 +86,12 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     // Проверка застревания
     private Vector3 stuckCheckPosition;
     private float stuckCheckTimer = 0f;
-    private bool isStuck = false;
+    private int stuckAttempts = 0;
+    private bool isInStuckArea = false;
+    private Vector3 stuckAreaCenter;
+    private float unstuckPatrolTimer = 0f;
+    private AIState stateBeforeUnstuck;
+    private bool isRecoveringFromStuck = false;
     
     // Анимация
     private float _currentSpeed;
@@ -509,14 +517,30 @@ public class EnemyBot : MonoBehaviour, ISpawnable
             direction.z != 0 ? (int)Mathf.Sign(direction.z) : 0
         );
         
-        // Пробуем разные варианты движения
+        // Пробуем разные варианты движения с приоритетом
         Vector3Int[] candidates = new Vector3Int[]
         {
+            // Прямой путь
             current + stepDir,                                      // Прямо к цели
             current + new Vector3Int(stepDir.x, 0, 0),             // По X
             current + new Vector3Int(0, 0, stepDir.z),             // По Z
+            
+            // Прыжки
+            current + stepDir + Vector3Int.up,                     // Прямо к цели с прыжком
             current + new Vector3Int(stepDir.x, 0, 0) + Vector3Int.up, // По X с прыжком
             current + new Vector3Int(0, 0, stepDir.z) + Vector3Int.up, // По Z с прыжком
+            
+            // Обход (диагонали)
+            current + new Vector3Int(stepDir.x, 0, -stepDir.z),    // Диагональ 1
+            current + new Vector3Int(-stepDir.x, 0, stepDir.z),    // Диагональ 2
+            
+            // Обход с прыжком
+            current + new Vector3Int(stepDir.x, 0, -stepDir.z) + Vector3Int.up,
+            current + new Vector3Int(-stepDir.x, 0, stepDir.z) + Vector3Int.up,
+            
+            // Назад с отступом (если совсем застряли)
+            current + new Vector3Int(-stepDir.x, 0, 0),
+            current + new Vector3Int(0, 0, -stepDir.z),
         };
         
         Vector3Int bestCandidate = current;
@@ -540,17 +564,26 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     bool IsWalkable(Vector3Int blockPos)
     {
+        if (voxelWorld == null) return false;
+        
         // Проверяем что позиция в границах мира
         if (blockPos.y < 0 || blockPos.y >= VoxelChunk16.HEIGHT) return false;
         
-        // Проверяем что текущая позиция свободна (для тела бота)
+        // Проверяем что текущая позиция свободна (для тела бота - 3 блока высоты)
         if (voxelWorld.HasBlockAt(blockPos.x, blockPos.y, blockPos.z)) return false;
         if (voxelWorld.HasBlockAt(blockPos.x, blockPos.y + 1, blockPos.z)) return false;
+        if (voxelWorld.HasBlockAt(blockPos.x, blockPos.y + 2, blockPos.z)) return false;
         
-        // Проверяем что под ногами есть твердый блок
-        if (blockPos.y > 0 && !voxelWorld.HasBlockAt(blockPos.x, blockPos.y - 1, blockPos.z))
+        // Проверяем что под ногами есть твердый блок (всегда, даже для Y=0)
+        if (blockPos.y == 0)
         {
-            // Нет блока под ногами - проверяем можем ли упасть
+            // На уровне 0 должен быть блок под нами (bedrock)
+            return true;
+        }
+        
+        if (!voxelWorld.HasBlockAt(blockPos.x, blockPos.y - 1, blockPos.z))
+        {
+            // Нет блока под ногами - нельзя идти
             return false;
         }
         
@@ -575,6 +608,29 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     void CheckIfStuck()
     {
+        // Если восстанавливаемся от застревания - ведем обратный отсчет
+        if (isRecoveringFromStuck)
+        {
+            unstuckPatrolTimer += Time.deltaTime;
+            
+            if (unstuckPatrolTimer >= unstuckPatrolTime)
+            {
+                // Время патруля истекло - можем снова искать игрока
+                Debug.Log($"EnemyBot [{name}]: Восстановление от застревания завершено, возвращаемся к {stateBeforeUnstuck}");
+                isRecoveringFromStuck = false;
+                currentState = stateBeforeUnstuck;
+                stuckAttempts = 0;
+                isInStuckArea = false;
+                
+                // Если были в погоне - обновляем путь
+                if (currentState == AIState.Chase && target != null)
+                {
+                    StartPathfindingToTarget();
+                }
+            }
+            return;
+        }
+        
         // Проверяем застревание только в состоянии преследования
         if (currentState != AIState.Chase) return;
         
@@ -582,32 +638,81 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         
         if (stuckCheckTimer >= stuckCheckTime)
         {
-            float distanceMoved = Vector3.Distance(transform.position, stuckCheckPosition);
+            Vector3 currentPos = transform.position;
+            float distanceMoved = Vector3.Distance(currentPos, stuckCheckPosition);
             
+            // Проверяем, находимся ли мы в той же области 4x4x4
+            if (!isInStuckArea)
+            {
+                // Первая проверка - запоминаем центр области
+                stuckAreaCenter = currentPos;
+                isInStuckArea = true;
+            }
+            else
+            {
+                // Проверяем, вышли ли мы за пределы области 4x4x4
+                Vector3 offset = currentPos - stuckAreaCenter;
+                bool stillInArea = Mathf.Abs(offset.x) <= stuckAreaSize * 0.5f && 
+                                   Mathf.Abs(offset.y) <= stuckAreaSize * 0.5f && 
+                                   Mathf.Abs(offset.z) <= stuckAreaSize * 0.5f;
+                
+                if (!stillInArea)
+                {
+                    // Вышли из области застревания - сбрасываем счетчик
+                    Debug.Log($"EnemyBot [{name}]: Вышел из области застревания");
+                    stuckAttempts = 0;
+                    isInStuckArea = false;
+                    stuckAreaCenter = currentPos;
+                }
+            }
+            
+            // Проверяем, двигались ли мы
             if (distanceMoved < stuckDistanceThreshold)
             {
-                // Застряли! Пытаемся прыгнуть
-                if (!isStuck)
+                stuckAttempts++;
+                Debug.Log($"EnemyBot [{name}]: Застрял! Попытка {stuckAttempts}/{maxStuckAttempts}, перемещение: {distanceMoved:F2}");
+                
+                if (stuckAttempts == 1)
                 {
-                    isStuck = true;
+                    // Первая попытка - прыгаем
                     _jumpPressed = true;
-                    //Debug.Log($"EnemyBot [{name}]: Застрял! Пробую прыгнуть...");
+                    Debug.Log($"EnemyBot [{name}]: Пытаюсь прыгнуть через препятствие");
                 }
-                else
+                else if (stuckAttempts == 2)
                 {
-                    // Прыжок не помог - ищем новый путь
-                    //Debug.Log($"EnemyBot [{name}]: Прыжок не помог, ищу новый путь...");
+                    // Вторая попытка - ищем новый путь
+                    Debug.Log($"EnemyBot [{name}]: Прыжок не помог, ищу альтернативный путь");
                     StopPathfinding();
                     StartPathfindingToTarget();
-                    isStuck = false;
+                }
+                else if (stuckAttempts >= maxStuckAttempts)
+                {
+                    // Третья попытка не удалась - переходим к патрулю на время
+                    Debug.LogWarning($"EnemyBot [{name}]: Не могу выбраться! Переключаюсь на патруль на {unstuckPatrolTime} секунд");
+                    
+                    stateBeforeUnstuck = AIState.Chase;
+                    currentState = AIState.Patrol;
+                    isRecoveringFromStuck = true;
+                    unstuckPatrolTimer = 0f;
+                    
+                    StopPathfinding();
+                    SetNewPatrolTarget();
+                    
+                    stuckAttempts = 0;
+                    isInStuckArea = false;
                 }
             }
             else
             {
-                isStuck = false;
+                // Двигаемся нормально - сбрасываем счетчик попыток
+                if (stuckAttempts > 0)
+                {
+                    Debug.Log($"EnemyBot [{name}]: Снова двигаюсь, сброс счетчика застревания");
+                }
+                stuckAttempts = 0;
             }
             
-            stuckCheckPosition = transform.position;
+            stuckCheckPosition = currentPos;
             stuckCheckTimer = 0f;
         }
     }

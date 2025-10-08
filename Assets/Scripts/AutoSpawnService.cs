@@ -438,56 +438,87 @@ public class AutoSpawnService
     
     private void ResetWorld()
     {
-        Debug.Log("Сбрасываем мир и возвращаем игрока на стартовую позицию");
+        Debug.Log("⚠️ Весь мир разрушен! Сбрасываем мир...");
         
-        // Отключаем Rigidbody игрока
-        Rigidbody playerRb = player.GetComponent<Rigidbody>();
-        if (playerRb != null)
+        // Находим игрока
+        if (!spawnables.TryGetValue("Player", out var playerData))
         {
-            playerRb.isKinematic = true;
-            Debug.Log("Rigidbody игрока отключен");
+            Debug.LogError("AutoSpawnService: Игрок не найден! Не можем сбросить мир.");
+            return;
+        }
+        
+        // Отключаем CharacterController игрока
+        CharacterController controller = playerData.spawnable.GetGameObject().GetComponent<CharacterController>();
+        if (controller != null)
+        {
+            controller.enabled = false;
+            Debug.Log("CharacterController игрока отключен");
         }
         
         // Перемещаем игрока на стартовую позицию
-        player.transform.position = startPosition;
+        playerData.spawnable.GetTransform().position = playerData.startPosition;
+        Debug.Log($"Игрок перемещен на стартовую позицию: {playerData.startPosition}");
         
         // Генерируем новый мир
         if (voxelWorld != null)
         {
-            Debug.Log("Генерируем новый мир...");
-            voxelWorld.Generate(); // Используем правильное имя метода
+            Debug.Log("🌍 Генерируем новый мир...");
+            voxelWorld.Generate();
+            Debug.Log("✓ Новый мир сгенерирован");
         }
         
-        // Включаем Rigidbody игрока
-        if (playerRb != null)
+        // Включаем CharacterController игрока
+        if (controller != null)
         {
-            playerRb.isKinematic = false;
-            Debug.Log("Rigidbody игрока включен");
+            controller.enabled = true;
+            Debug.Log("CharacterController игрока включен");
         }
         
-        // Сбрасываем сохраненную позицию на стартовую
-        lastSavedPosition = startPosition;
-        hasValidSavePosition = true;
-        
-        Debug.Log($"Мир сброшен, игрок на стартовой позиции: {startPosition}");
-    }
-    
-    public void ForceSavePosition()
-    {
-        if (player != null && IsPlayerOnGround())
+        // Сбрасываем сохраненные позиции всех сущностей на стартовые
+        foreach (var kvp in spawnables)
         {
-            SavePlayerPosition();
+            kvp.Value.lastSavedPosition = kvp.Value.startPosition;
+            kvp.Value.hasValidSavePosition = true;
+            kvp.Value.lastSaveTime = Time.time;
+        }
+        
+        Debug.Log($"✓ Мир успешно сброшен!");
+    }
+    
+    public void ForceSavePosition(ISpawnable spawnable)
+    {
+        string id = spawnable.GetSpawnableID();
+        
+        if (spawnables.TryGetValue(id, out var data))
+        {
+            if (spawnable.IsGrounded())
+            {
+                SavePosition(data);
+            }
         }
     }
     
-    public Vector3 GetLastSavedPosition()
+    public Vector3 GetLastSavedPosition(string spawnableID)
     {
-        return lastSavedPosition;
+        if (spawnables.TryGetValue(spawnableID, out var data))
+        {
+            return data.lastSavedPosition;
+        }
+        return Vector3.zero;
     }
     
-    public bool HasValidSavePosition()
+    public bool HasValidSavePosition(string spawnableID)
     {
-        return hasValidSavePosition;
+        if (spawnables.TryGetValue(spawnableID, out var data))
+        {
+            return data.hasValidSavePosition;
+        }
+        return false;
+    }
+    
+    public int GetRegisteredCount()
+    {
+        return spawnables.Count;
     }
     
     public void SetSaveInterval(float interval)
