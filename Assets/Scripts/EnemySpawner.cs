@@ -136,6 +136,13 @@ public class EnemySpawner : MonoBehaviour
         
         currentEnemiesPerWave = enemiesPerSpawn;
         
+        // Проверяем режим SpawnPoints - если точки не установлены, переключаемся на RandomInRadius
+        if (areaMode == SpawnAreaMode.SpawnPoints && (spawnPoints == null || spawnPoints.Length == 0))
+        {
+            Debug.LogWarning($"EnemySpawner [{name}]: Режим SpawnPoints, но точки не установлены! Переключаемся на RandomInRadius");
+            areaMode = SpawnAreaMode.RandomInRadius;
+        }
+        
         // Запуск спавна в зависимости от режима
         switch (spawnMode)
         {
@@ -280,6 +287,8 @@ public class EnemySpawner : MonoBehaviour
             GameObject enemy = Instantiate(enemyPrefab, spawnPosition, Quaternion.identity);
             enemy.name = $"Enemy_{currentWave}_{spawned + 1}";
             
+            Debug.Log($"[EnemySpawner] Заспавнен враг '{enemy.name}' на позиции {spawnPosition}");
+            
             // Инициализируем EnemyBot если есть
             EnemyBot bot = enemy.GetComponent<EnemyBot>();
             if (bot != null && targetPlayer != null)
@@ -312,12 +321,23 @@ public class EnemySpawner : MonoBehaviour
     {
         Vector3 basePosition = transform.position;
         
+        // Если спавнер в позиции (0, 0, 0) и есть игрок - используем позицию игрока как базу
+        if (basePosition == Vector3.zero && targetPlayer != null)
+        {
+            basePosition = targetPlayer.position;
+            Debug.LogWarning($"[EnemySpawner] Спавнер находится в (0, 0, 0)! Используем позицию игрока как базу: {basePosition}");
+        }
+        
+        Debug.Log($"[EnemySpawner] GetSpawnPosition: Базовая позиция спавнера = {basePosition}, режим = {areaMode}");
+        
         switch (areaMode)
         {
             case SpawnAreaMode.RandomInRadius:
                 // Случайная XZ позиция в радиусе
                 Vector2 randomCircle = Random.insideUnitCircle * spawnRadius;
                 basePosition = transform.position + new Vector3(randomCircle.x, 0, randomCircle.y);
+                
+                Debug.Log($"[EnemySpawner] RandomInRadius: Случайная позиция = {basePosition}, радиус = {spawnRadius}");
                 
                 // Если включена проверка безопасности и есть VoxelWorld
                 if (checkSafeSpawn && voxelWorld != null)
@@ -346,7 +366,22 @@ public class EnemySpawner : MonoBehaviour
                     if (spawnPoint != null)
                     {
                         basePosition = spawnPoint.position;
+                        Debug.Log($"[EnemySpawner] SpawnPoints: Выбрана точка спавна = {basePosition}");
                     }
+                    else
+                    {
+                        Debug.LogWarning($"[EnemySpawner] SpawnPoints: Точка спавна == null, используем случайную позицию");
+                        // Fallback на случайную позицию
+                        Vector2 randomOffset = Random.insideUnitCircle * spawnRadius;
+                        basePosition = transform.position + new Vector3(randomOffset.x, 0, randomOffset.y);
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[EnemySpawner] SpawnPoints: Точки спавна не установлены! Используем случайную позицию в радиусе {spawnRadius}");
+                    // Fallback на случайную позицию
+                    Vector2 randomOffset = Random.insideUnitCircle * spawnRadius;
+                    basePosition = transform.position + new Vector3(randomOffset.x, 0, randomOffset.y);
                 }
                 
                 // Проверяем безопасность для Spawn Points
@@ -385,6 +420,8 @@ public class EnemySpawner : MonoBehaviour
         int blockX = Mathf.FloorToInt(position.x);
         int blockZ = Mathf.FloorToInt(position.z);
         
+        Debug.Log($"[EnemySpawner] FindSafeYPosition: Ищем безопасную высоту для ({blockX}, ?, {blockZ}), диапазон Y: [{minSpawnHeight}, {maxSpawnHeight}]");
+        
         // Новая логика: ищем снизу ВВЕРХ пока не найдем безопасное место
         for (int y = minSpawnHeight; y <= maxSpawnHeight; y++)
         {
@@ -402,15 +439,18 @@ public class EnemySpawner : MonoBehaviour
                     float distanceToPlayer = Vector3.Distance(safePos, targetPlayer.position);
                     if (distanceToPlayer < minDistanceFromPlayer)
                     {
+                        Debug.Log($"[EnemySpawner] Позиция ({blockX}, {y}, {blockZ}) слишком близко к игроку ({distanceToPlayer:F1}m < {minDistanceFromPlayer}m), ищем дальше");
                         continue; // Слишком близко к игроку, ищем выше
                     }
                 }
                 
+                Debug.Log($"[EnemySpawner] Найдена безопасная позиция: {safePos}");
                 return safePos;
             }
         }
         
         // Если дошли до верха и не нашли - возвращаем Vector3.zero как признак неудачи
+        Debug.LogWarning($"[EnemySpawner] Не найдена безопасная позиция для ({blockX}, ?, {blockZ}) в диапазоне Y: [{minSpawnHeight}, {maxSpawnHeight}]");
         return Vector3.zero;
     }
     

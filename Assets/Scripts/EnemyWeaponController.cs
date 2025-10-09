@@ -274,16 +274,87 @@ public class EnemyWeaponController : MonoBehaviour
     }
     
     /// <summary>
-    /// Получает текущий снаряд для стрельбы
+    /// Получает текущий снаряд для стрельбы (умный выбор)
     /// </summary>
     GameObject GetCurrentProjectile()
     {
         if (availableProjectiles.Count == 0) return null;
         
-        // Пока просто возвращаем текущий по индексу
-        // Логика выбора будет добавлена позже
-        currentProjectileIndex = Mathf.Clamp(currentProjectileIndex, 0, availableProjectiles.Count - 1);
-        return availableProjectiles[currentProjectileIndex];
+        Transform target = bot.GetTarget();
+        if (target == null)
+        {
+            // Нет цели - используем первый доступный
+            return availableProjectiles[0];
+        }
+        
+        // Вычисляем угол стрельбы
+        Transform barrel = bot.GetWeaponBarrel();
+        if (barrel == null)
+        {
+            return availableProjectiles[0];
+        }
+        
+        Vector3 directionToTarget = target.position - barrel.position;
+        float verticalAngle = Vector3.SignedAngle(Vector3.forward, directionToTarget, Vector3.right);
+        
+        // Проверяем есть ли путь до игрока
+        EnemyPathfindingService pathfinding = bot.GetPathfindingService();
+        bool hasPath = pathfinding != null && pathfinding.CurrentPath != null && pathfinding.CurrentPath.Count > 0;
+        
+        // СТРАТЕГИЯ 1: Стрельба вниз - используем стандартный снаряд (пушечное ядро)
+        if (verticalAngle < -15f) // Стреляем вниз больше чем на 15 градусов
+        {
+            GameObject standardProjectile = FindProjectileByType("Dinamit");
+            if (standardProjectile != null)
+            {
+                Debug.Log($"[Bot Weapon] Стрельба вниз ({verticalAngle:F1}°), выбран стандартный снаряд (пушечное ядро)");
+                return standardProjectile;
+            }
+        }
+        
+        // СТРАТЕГИЯ 2: Нет пути до игрока, но игрок в зоне видимости - пробуем динамит с шансом
+        if (!hasPath && Random.value < 0.3f) // 30% шанс
+        {
+            GameObject dinamitProjectile = FindProjectileByType("Dinamit");
+            if (dinamitProjectile != null)
+            {
+                Debug.Log($"[Bot Weapon] Нет пути до игрока, пробуем динамит (создает меш)");
+                return dinamitProjectile;
+            }
+        }
+        
+        // СТРАТЕГИЯ 3: Стрельба вверх или прямо - используем ракету или пулю
+        GameObject rocketProjectile = FindProjectileByType("Rocket");
+        if (rocketProjectile != null)
+        {
+            Debug.Log($"[Bot Weapon] Стрельба прямо/вверх ({verticalAngle:F1}°), выбрана ракета");
+            return rocketProjectile;
+        }
+        
+        GameObject pistolProjectile = FindProjectileByType("Pistol");
+        if (pistolProjectile != null)
+        {
+            Debug.Log($"[Bot Weapon] Стрельба прямо/вверх ({verticalAngle:F1}°), выбрана пуля");
+            return pistolProjectile;
+        }
+        
+        // Fallback - первый доступный
+        return availableProjectiles[0];
+    }
+    
+    /// <summary>
+    /// Ищет снаряд по типу (по имени префаба)
+    /// </summary>
+    GameObject FindProjectileByType(string typeName)
+    {
+        foreach (GameObject projectile in availableProjectiles)
+        {
+            if (projectile != null && projectile.name.Contains(typeName))
+            {
+                return projectile;
+            }
+        }
+        return null;
     }
     
     /// <summary>

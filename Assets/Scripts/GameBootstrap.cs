@@ -411,41 +411,68 @@ public class GameBootstrap : MonoBehaviour
     bool IsPositionSafe(Vector3 position)
     {
         if (voxelWorld == null)
+        {
+            Debug.LogWarning($"[Player Safety] VoxelWorld == null");
             return false;
+        }
         
         // Проверяем границы мира
         if (position.x < 0 || position.z < 0 || position.y < 0 || position.y >= VoxelChunk16.HEIGHT)
+        {
+            Debug.LogWarning($"[Player Safety] Позиция {position} вне границ мира");
             return false;
+        }
         
         int worldWidth = voxelWorld.chunksX * VoxelChunk16.WIDTH;
         int worldDepth = voxelWorld.chunksZ * VoxelChunk16.DEPTH;
         
         if (position.x >= worldWidth || position.z >= worldDepth)
+        {
+            Debug.LogWarning($"[Player Safety] Позиция {position} вне границ мира (ширина={worldWidth}, глубина={worldDepth})");
             return false;
+        }
         
-        // Проверяем, что под ногами есть блок (на 1 блок ниже)
+        // Проверяем, что под ногами есть блок
+        // Игрок стоит на высоте Y, под ногами должен быть блок на Y-1 или Y-2
         int blockX = Mathf.FloorToInt(position.x);
-        int blockY = Mathf.FloorToInt(position.y - 1f);
         int blockZ = Mathf.FloorToInt(position.z);
         
-        if (blockY < 0 || blockY >= VoxelChunk16.HEIGHT)
+        // Проверяем блок прямо под позицией игрока
+        int blockYDirect = Mathf.FloorToInt(position.y);
+        // Проверяем блок на 1 ниже
+        int blockYBelow = Mathf.FloorToInt(position.y - 1f);
+        
+        Debug.Log($"[Player Safety] Проверка позиции {position}: blockX={blockX}, blockZ={blockZ}, blockYDirect={blockYDirect}, blockYBelow={blockYBelow}");
+        
+        // Проверяем есть ли земля под ногами (на -1 или -2 блока)
+        bool hasGroundDirect = voxelWorld.HasBlockAt(blockX, blockYDirect - 1, blockZ);
+        bool hasGroundBelow = voxelWorld.HasBlockAt(blockX, blockYBelow, blockZ);
+        
+        Debug.Log($"[Player Safety] Земля под ногами: blockY={blockYDirect-1} → {hasGroundDirect}, blockY={blockYBelow} → {hasGroundBelow}");
+        
+        if (!hasGroundDirect && !hasGroundBelow)
+        {
+            Debug.LogWarning($"[Player Safety] Нет земли под ногами на Y={blockYDirect-1} или Y={blockYBelow}");
             return false;
+        }
         
-        bool hasGroundBlock = voxelWorld.HasBlockAt(blockX, blockY, blockZ);
-        
-        if (!hasGroundBlock)
-            return false;
-        
-        // Проверяем, что над головой свободно (минимум 2 блока)
-        for (int checkY = Mathf.FloorToInt(position.y); checkY <= Mathf.FloorToInt(position.y) + 2; checkY++)
+        // Проверяем, что на уровне игрока и выше свободно (минимум 2 блока)
+        for (int checkY = blockYDirect; checkY <= blockYDirect + 2; checkY++)
         {
             if (checkY >= VoxelChunk16.HEIGHT)
                 break;
             
-            if (voxelWorld.HasBlockAt(blockX, checkY, blockZ))
+            bool hasBlock = voxelWorld.HasBlockAt(blockX, checkY, blockZ);
+            Debug.Log($"[Player Safety] Проверка свободного пространства Y={checkY}: hasBlock={hasBlock}");
+            
+            if (hasBlock)
+            {
+                Debug.LogWarning($"[Player Safety] Есть блок на уровне игрока Y={checkY}");
                 return false; // Есть блок на уровне игрока или выше
+            }
         }
         
+        Debug.Log($"[Player Safety] Позиция {position} БЕЗОПАСНА ✓");
         return true;
     }
     

@@ -167,6 +167,11 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         return aiStateMachine != null ? aiStateMachine.CurrentState : AIState.Idle;
     }
     
+    public EnemyPathfindingService GetPathfindingService()
+    {
+        return pathfindingService;
+    }
+    
     // ISpawnable интерфейс
     public string GetSpawnableID()
     {
