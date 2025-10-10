@@ -228,10 +228,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8488379121750597141}
-  - component: {fileID: 3650699086763973559}
-  - component: {fileID: 4254031496949826457}
-  - component: {fileID: 8235697440935693229}
-  - component: {fileID: 7903987389260092611}
   m_Layer: 6
   m_Name: Weapon
   m_TagString: Untagged
@@ -254,94 +250,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 8860562274610005373}
   m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
---- !u!33 &3650699086763973559
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 457500913787215341}
-  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
---- !u!23 &4254031496949826457
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 457500913787215341}
-  m_Enabled: 0
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_AdditionalVertexStreams: {fileID: 0}
---- !u!135 &8235697440935693229
-SphereCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 457500913787215341}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 0
-  serializedVersion: 3
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &7903987389260092611
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 457500913787215341}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 501c9ce12cd1b9f448c2576a0efdaf8e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  shootPosition: {fileID: 8488379121750597141}
-  projectilePrefab: {fileID: 3432985819507788519, guid: 2a14c16f376a30e4592041fee7fa871b, type: 3}
-  shootForce: 10
-  maxAmmo: 3
-  reloadTime: 0.5
 --- !u!1 &614243550922698339
 GameObject:
   m_ObjectHideFlags: 0
@@ -642,6 +550,7 @@ GameObject:
   - component: {fileID: 8820657536324544418}
   - component: {fileID: 4962536976199784962}
   - component: {fileID: 7156868726913546191}
+  - component: {fileID: 7362827353862530790}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -740,6 +649,31 @@ MonoBehaviour:
   speedParameter: Speed
   isGroundedParameter: IsGrounded
   animationSpeedMultiplier: 1
+--- !u!114 &7362827353862530790
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427420761115132036}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b462e76255a6104ebeb379dc1fb1481, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  availableProjectiles:
+  - {fileID: 3432985819507788519, guid: 2a14c16f376a30e4592041fee7fa871b, type: 3}
+  - {fileID: 4211870640068019189, guid: 0ea88edbb2412524b803e7a3c01caf3b, type: 3}
+  - {fileID: 8801266385320015286, guid: 96cc4bea6137d324fbd61609b9850900, type: 3}
+  - {fileID: 3432985819507788519, guid: 4e044663587e652439cfd32f081fa8e1, type: 3}
+  turret: {fileID: 3340778521501724557}
+  weaponBarrel: {fileID: 6467144927773201143}
+  shootPoint: {fileID: 8488379121750597141}
+  turretRotationSpeed: 180
+  barrelPitchSpeed: 90
+  minBarrelPitch: -40
+  maxBarrelPitch: 60
+  turretModelOffset: 90
 --- !u!1 &1584638977597030045
 GameObject:
   m_ObjectHideFlags: 0
@@ -898,7 +832,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3340778521501724557}
-  - component: {fileID: 3631478248967321630}
   m_Layer: 6
   m_Name: TurretBase
   m_TagString: Untagged
@@ -923,31 +856,6 @@ Transform:
   - {fileID: 6467144927773201143}
   m_Father: {fileID: 6495354820527521260}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &3631478248967321630
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2291020330038691269}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8303d2ada86649c49865c3d72daf4255, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  turretBase: {fileID: 3340778521501724557}
-  weaponBarrel: {fileID: 6467144927773201143}
-  turretRotationAxis: {x: 0, y: 0, z: 1}
-  weaponRotationAxis: {x: -1, y: 0, z: 0}
-  turretRotationSpeed: 90
-  weaponRotationSpeed: 60
-  minWeaponAngle: -30
-  maxWeaponAngle: 60
-  weaponAngleCorrection: 0
-  joystickSensitivity: 1
-  maxRotationSpeed: 180
-  smoothingFactor: 0.1
-  minMovementThreshold: 0.5
 --- !u!1 &3033725378093693600
 GameObject:
   m_ObjectHideFlags: 0

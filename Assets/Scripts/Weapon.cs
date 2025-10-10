@@ -17,6 +17,15 @@ public class Weapon : MonoBehaviour
 
     void Start()
     {
+        // ВАЖНО: Если есть PlayerWeaponController, отключаем этот старый скрипт
+        PlayerWeaponController newWeaponController = GetComponent<PlayerWeaponController>();
+        if (newWeaponController != null)
+        {
+            Debug.LogWarning("[Weapon] Обнаружен PlayerWeaponController! Старый скрипт Weapon отключен. Удалите компонент Weapon с игрока.");
+            enabled = false;
+            return;
+        }
+        
         // Подписываемся на событие стрельбы
         GlobalEvents.Shoot.AddListener(OnShoot);
         

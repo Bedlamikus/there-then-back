@@ -29,6 +29,10 @@ public class CameraController : MonoBehaviour
     public LayerMask collisionLayerMask = -1;      // Слои для проверки коллизий
     public float hysteresisDistance = 1f;           // Расстояние для проверки гистерезиса
     public LayerMask playerLayerMask = -1;          // Слои игрока для исключения из коллизий
+    
+    [Header("Aim Point")]
+    public float aimRaycastDistance = 100f;         // Максимальная дистанция рейкаста для прицеливания
+    public LayerMask aimLayerMask = -1;             // Слои для рейкаста прицеливания
 
     [Header("Joystick Input")]
     public FloatingJoystick cameraJoystick;        // Джойстик для управления камерой
@@ -76,6 +80,9 @@ public class CameraController : MonoBehaviour
 
         // Применяем вращение камеры
         ApplyCameraRotation();
+        
+        // Публикуем точку прицеливания в центре экрана
+        PublishAimPoint();
     }
 
     void InitializeCameraPosition()
@@ -273,11 +280,70 @@ public class CameraController : MonoBehaviour
     public bool IsReturningToMaxDistance() => isReturningToMaxDistance;
     public float GetCurrentCameraDistance() => currentCameraDistance;
 
+    /// <summary>
+    /// Вычисляет и публикует точку прицеливания в центре экрана
+    /// </summary>
+    void PublishAimPoint()
+    {
+        if (virtualCamera == null) return;
+        
+        // Получаем позицию и направление камеры
+        Transform camTransform = virtualCamera.transform;
+        Vector3 origin = camTransform.position;
+        Vector3 direction = camTransform.forward;
+        
+        // Исключаем слой игрока из проверки
+        LayerMask effectiveAimMask = aimLayerMask & ~playerLayerMask;
+        
+        RaycastHit hit;
+        Vector3 aimPoint;
+        
+        // Делаем raycast из центра камеры (без учета слоя игрока)
+        if (Physics.Raycast(origin, direction, out hit, aimRaycastDistance, effectiveAimMask))
+        {
+            // Попали в что-то - используем точку попадания
+            aimPoint = hit.point;
+        }
+        else
+        {
+            // Не попали - используем точку на максимальной дистанции
+            aimPoint = origin + direction * aimRaycastDistance;
+        }
+        
+        // Публикуем точку прицеливания
+        GlobalEvents.CameraAimPoint.Invoke(aimPoint);
+    }
+    
     // Методы для получения информации о камере
     public Vector3 GetLookTarget()
     {
         if (playerTransform == null) return Vector3.zero;
         return playerTransform.position + Vector3.up * cameraHeight;
+    }
+    
+    /// <summary>
+    /// Получает текущую точку прицеливания (публичный метод)
+    /// </summary>
+    public Vector3 GetAimPoint()
+    {
+        if (virtualCamera == null) return Vector3.zero;
+        
+        Transform camTransform = virtualCamera.transform;
+        Vector3 origin = camTransform.position;
+        Vector3 direction = camTransform.forward;
+        
+        // Исключаем слой игрока из проверки
+        LayerMask effectiveAimMask = aimLayerMask & ~playerLayerMask;
+        
+        RaycastHit hit;
+        if (Physics.Raycast(origin, direction, out hit, aimRaycastDistance, effectiveAimMask))
+        {
+            return hit.point;
+        }
+        else
+        {
+            return origin + direction * aimRaycastDistance;
+        }
     }
 
     void OnDrawGizmosSelected()

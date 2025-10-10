@@ -33,7 +33,6 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     {
         if (isInitialized)
         {
-            Debug.LogWarning($"[Bot] Бот {botID} уже инициализирован!");
             return;
         }
         

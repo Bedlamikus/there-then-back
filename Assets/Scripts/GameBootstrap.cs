@@ -81,12 +81,12 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     IEnumerator InitializeGame()
     {
-        Debug.Log("=== GameBootstrap: Начало инициализации игры ===");
+        
         
         // Шаг 1: Найти VoxelWorld если не указан
         if (voxelWorld == null)
         {
-            Debug.Log("GameBootstrap: Поиск VoxelWorld...");
+            
             voxelWorld = FindObjectOfType<VoxelWorld>();
             
             if (voxelWorld == null)
@@ -95,13 +95,13 @@ public class GameBootstrap : MonoBehaviour
                 yield break;
             }
             
-            Debug.Log($"GameBootstrap: VoxelWorld найден: {voxelWorld.name}");
+            
         }
         
         // Шаг 2: Ждать готовности мира
         if (waitForWorldReady)
         {
-            Debug.Log("GameBootstrap: Ожидание готовности мира...");
+            
             
             float startTime = Time.time;
             while (!voxelWorld.IsWorldReady)
@@ -132,7 +132,7 @@ public class GameBootstrap : MonoBehaviour
         InitializeEnemySpawners();
         
         isInitialized = true;
-        Debug.Log("=== GameBootstrap: Инициализация завершена успешно ===");
+        
     }
     
     /// <summary>
@@ -146,7 +146,7 @@ public class GameBootstrap : MonoBehaviour
             yield break;
         }
         
-        Debug.Log("[Player] Спавн игрока...");
+        
         
         // Определяем позицию спавна
         Vector3 spawnPosition;
@@ -159,33 +159,47 @@ public class GameBootstrap : MonoBehaviour
             spawnPosition = savedPosition.GetPosition();
             spawnRotation = savedPosition.GetRotation();
             
-            Debug.Log($"[Player] Загружена позиция из файла: {spawnPosition}, Rotation: {spawnRotation.eulerAngles}");
+            
             
             // Проверяем, что сохраненная позиция безопасна
             if (!IsPositionSafe(spawnPosition))
             {
-                Debug.LogWarning($"[Player] Сохраненная позиция небезопасна (Y={spawnPosition.y:F2}), используем стандартный спавн");
-                spawnPosition = voxelWorld.GetSafeSpawnPosition();
-                spawnRotation = Quaternion.identity;
-                Debug.Log($"[Player] Новая безопасная позиция: {spawnPosition}");
+                
+                
+                // Пытаемся найти безопасную позицию рядом с сохраненной
+                Vector3 nearbyPosition = FindSafePositionNearby(spawnPosition, searchRadius: 10f, maxAttempts: 50);
+                
+                if (nearbyPosition != Vector3.zero)
+                {
+                    spawnPosition = nearbyPosition;
+                    
+                }
+                else
+                {
+                    // Не нашли рядом - используем стандартный спавн
+                    
+                    spawnPosition = voxelWorld.GetSafeSpawnPosition();
+                    spawnRotation = Quaternion.identity;
+                    
+                }
             }
             else
             {
-                Debug.Log($"[Player] Сохраненная позиция безопасна, используем ее");
+                
             }
         }
         else
         {
             // Получаем безопасную позицию спавна из VoxelWorld
             spawnPosition = voxelWorld.GetSafeSpawnPosition();
-            Debug.Log($"[Player] Сохранение не найдено, используем безопасную позицию: {spawnPosition}");
+            
         }
         
         // Создаем игрока
         spawnedPlayer = Instantiate(playerPrefab, spawnPosition, spawnRotation);
         spawnedPlayer.name = "Player"; // Убираем (Clone) из имени
         
-        Debug.Log($"[Player] Игрок создан: {spawnedPlayer.name} в позиции {spawnPosition}");
+        
         
         // Если нужно, отключаем игрока пока мир не готов
         if (disablePlayerUntilReady && !voxelWorld.IsWorldReady)
@@ -194,7 +208,7 @@ public class GameBootstrap : MonoBehaviour
             if (controller != null)
             {
                 controller.enabled = false;
-                Debug.Log("GameBootstrap: CharacterController временно отключен");
+                
             }
             
             // Ждем готовности
@@ -207,11 +221,11 @@ public class GameBootstrap : MonoBehaviour
             if (controller != null)
             {
                 controller.enabled = true;
-                Debug.Log("GameBootstrap: CharacterController включен");
+                
             }
         }
         
-        Debug.Log("[Player] Игрок готов к игре!");
+        
     }
     
     /// <summary>
@@ -219,7 +233,7 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     IEnumerator InitializeCamera()
     {
-        Debug.Log("GameBootstrap: Инициализация камеры...");
+        
         
         // Найти CameraController если не указан
         if (cameraController == null)
@@ -228,11 +242,11 @@ public class GameBootstrap : MonoBehaviour
             
             if (cameraController == null)
             {
-                Debug.LogWarning("GameBootstrap: CameraController не найден в сцене. Пропускаем инициализацию камеры.");
+                
                 yield break;
             }
             
-            Debug.Log($"GameBootstrap: CameraController найден: {cameraController.name}");
+            
         }
         
         // Проверяем что игрок создан
@@ -259,13 +273,13 @@ public class GameBootstrap : MonoBehaviour
             pivotGO.transform.localRotation = Quaternion.identity;
             
             playerController.cameraPivot = pivotGO.transform;
-            Debug.Log("GameBootstrap: CameraPivot создан для игрока");
+            
         }
         
         // Сбрасываем камеру для инициализации позиции
         cameraController.ResetCamera();
         
-        Debug.Log("GameBootstrap: Камера инициализирована успешно");
+        
         
         yield return null;
     }
@@ -275,7 +289,7 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     void InitializeEnemySpawners()
     {
-        Debug.Log("GameBootstrap: Инициализация спавнеров врагов...");
+        
         
         // Автопоиск спавнеров если массив пуст
         if ((enemySpawners == null || enemySpawners.Length == 0) && autoFindSpawners)
@@ -284,13 +298,13 @@ public class GameBootstrap : MonoBehaviour
             
             if (enemySpawners.Length > 0)
             {
-                Debug.Log($"GameBootstrap: Найдено {enemySpawners.Length} спавнеров в сцене");
+                
             }
         }
         
         if (enemySpawners == null || enemySpawners.Length == 0)
         {
-            Debug.LogWarning("GameBootstrap: Спавнеры врагов не найдены");
+            
             return;
         }
         
@@ -319,7 +333,7 @@ public class GameBootstrap : MonoBehaviour
             }
         }
         
-        Debug.Log($"GameBootstrap: Инициализировано {initializedCount} спавнеров врагов");
+        
     }
     
     /// <summary>
@@ -345,7 +359,7 @@ public class GameBootstrap : MonoBehaviour
     {
         if (spawnedPlayer == null)
         {
-            Debug.LogWarning("GameBootstrap: Игрок не создан, невозможно переспавнить");
+            
             return;
         }
         
@@ -360,7 +374,7 @@ public class GameBootstrap : MonoBehaviour
             controller.enabled = true;
         }
         
-        Debug.Log($"[Player] Игрок переспавнен в позиции {spawnPosition}");
+        
     }
     
     // ========== СОХРАНЕНИЕ ПОЗИЦИИ ИГРОКА ==========
@@ -391,7 +405,7 @@ public class GameBootstrap : MonoBehaviour
         PlayerController playerController = spawnedPlayer.GetComponent<PlayerController>();
         if (playerController != null && !playerController.IsGrounded())
         {
-            Debug.LogWarning($"[Player] Игрок не на земле (Y={spawnedPlayer.transform.position.y:F2}), пропускаем сохранение");
+            
             return;
         }
         
@@ -402,7 +416,113 @@ public class GameBootstrap : MonoBehaviour
         data.SetRotation(spawnedPlayer.transform.rotation);
         playerPositionSave.Save();
         
-        Debug.Log($"[Player] Позиция игрока сохранена в файл: {currentPosition} (IsGrounded: {playerController?.IsGrounded()})");
+        //
+    }
+    
+    /// <summary>
+    /// Найти безопасную позицию рядом с указанной точкой
+    /// </summary>
+    Vector3 FindSafePositionNearby(Vector3 center, float searchRadius, int maxAttempts)
+    {
+        
+        
+        // Сначала пробуем поискать на той же высоте в горизонтальной плоскости
+        for (int attempt = 0; attempt < maxAttempts / 2; attempt++)
+        {
+            // Случайная позиция в радиусе
+            Vector2 randomOffset = Random.insideUnitCircle * searchRadius;
+            Vector3 testPosition = center + new Vector3(randomOffset.x, 0, randomOffset.y);
+            
+            // Корректируем Y координату - ищем землю
+            Vector3 safePosition = FindSafeYForPosition(testPosition);
+            
+            if (safePosition != Vector3.zero && IsPositionSafe(safePosition))
+            {
+                float distance = Vector3.Distance(center, safePosition);
+                
+                return safePosition;
+            }
+        }
+        
+        // Если не нашли - пробуем по спирали от центра
+        for (int radius = 1; radius <= (int)searchRadius; radius++)
+        {
+            // Проверяем 8 направлений на каждом радиусе
+            Vector3[] directions = new Vector3[]
+            {
+                new Vector3(radius, 0, 0),      // Восток
+                new Vector3(-radius, 0, 0),     // Запад
+                new Vector3(0, 0, radius),      // Север
+                new Vector3(0, 0, -radius),     // Юг
+                new Vector3(radius, 0, radius),    // Северо-восток
+                new Vector3(-radius, 0, radius),   // Северо-запад
+                new Vector3(radius, 0, -radius),   // Юго-восток
+                new Vector3(-radius, 0, -radius)   // Юго-запад
+            };
+            
+            foreach (Vector3 dir in directions)
+            {
+                Vector3 testPosition = center + dir;
+                Vector3 safePosition = FindSafeYForPosition(testPosition);
+                
+                if (safePosition != Vector3.zero && IsPositionSafe(safePosition))
+                {
+                    float distance = Vector3.Distance(center, safePosition);
+                    
+                    return safePosition;
+                }
+            }
+        }
+        
+        
+        return Vector3.zero;
+    }
+    
+    /// <summary>
+    /// Найти безопасную Y координату для заданной XZ позиции
+    /// </summary>
+    Vector3 FindSafeYForPosition(Vector3 position)
+    {
+        if (voxelWorld == null) return Vector3.zero;
+        
+        int blockX = Mathf.FloorToInt(position.x);
+        int blockZ = Mathf.FloorToInt(position.z);
+        int startY = Mathf.FloorToInt(position.y);
+        
+        // Проверяем границы XZ
+        int worldWidth = voxelWorld.chunksX * VoxelChunk16.WIDTH;
+        int worldDepth = voxelWorld.chunksZ * VoxelChunk16.DEPTH;
+        
+        if (blockX < 0 || blockX >= worldWidth || blockZ < 0 || blockZ >= worldDepth)
+            return Vector3.zero;
+        
+        // Ищем вниз от стартовой высоты (до 20 блоков)
+        for (int y = startY; y >= Mathf.Max(0, startY - 20); y--)
+        {
+            // Проверяем что есть земля и свободно сверху
+            if (voxelWorld.HasBlockAt(blockX, y, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 1, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 2, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 3, blockZ))
+            {
+                // Позиция на 1.5 блока выше земли
+                return new Vector3(blockX + 0.5f, y + 1.5f, blockZ + 0.5f);
+            }
+        }
+        
+        // Ищем вверх от стартовой высоты (до 20 блоков)
+        for (int y = startY + 1; y <= Mathf.Min(VoxelChunk16.HEIGHT - 3, startY + 20); y++)
+        {
+            if (voxelWorld.HasBlockAt(blockX, y, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 1, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 2, blockZ) &&
+                !voxelWorld.HasBlockAt(blockX, y + 3, blockZ))
+            {
+                return new Vector3(blockX + 0.5f, y + 1.5f, blockZ + 0.5f);
+            }
+        }
+        
+        return Vector3.zero;
     }
     
     /// <summary>
@@ -412,14 +532,14 @@ public class GameBootstrap : MonoBehaviour
     {
         if (voxelWorld == null)
         {
-            Debug.LogWarning($"[Player Safety] VoxelWorld == null");
+            
             return false;
         }
         
         // Проверяем границы мира
         if (position.x < 0 || position.z < 0 || position.y < 0 || position.y >= VoxelChunk16.HEIGHT)
         {
-            Debug.LogWarning($"[Player Safety] Позиция {position} вне границ мира");
+            
             return false;
         }
         
@@ -428,7 +548,7 @@ public class GameBootstrap : MonoBehaviour
         
         if (position.x >= worldWidth || position.z >= worldDepth)
         {
-            Debug.LogWarning($"[Player Safety] Позиция {position} вне границ мира (ширина={worldWidth}, глубина={worldDepth})");
+            
             return false;
         }
         
@@ -442,17 +562,17 @@ public class GameBootstrap : MonoBehaviour
         // Проверяем блок на 1 ниже
         int blockYBelow = Mathf.FloorToInt(position.y - 1f);
         
-        Debug.Log($"[Player Safety] Проверка позиции {position}: blockX={blockX}, blockZ={blockZ}, blockYDirect={blockYDirect}, blockYBelow={blockYBelow}");
+        
         
         // Проверяем есть ли земля под ногами (на -1 или -2 блока)
         bool hasGroundDirect = voxelWorld.HasBlockAt(blockX, blockYDirect - 1, blockZ);
         bool hasGroundBelow = voxelWorld.HasBlockAt(blockX, blockYBelow, blockZ);
         
-        Debug.Log($"[Player Safety] Земля под ногами: blockY={blockYDirect-1} → {hasGroundDirect}, blockY={blockYBelow} → {hasGroundBelow}");
+        
         
         if (!hasGroundDirect && !hasGroundBelow)
         {
-            Debug.LogWarning($"[Player Safety] Нет земли под ногами на Y={blockYDirect-1} или Y={blockYBelow}");
+            
             return false;
         }
         
@@ -463,16 +583,16 @@ public class GameBootstrap : MonoBehaviour
                 break;
             
             bool hasBlock = voxelWorld.HasBlockAt(blockX, checkY, blockZ);
-            Debug.Log($"[Player Safety] Проверка свободного пространства Y={checkY}: hasBlock={hasBlock}");
+            
             
             if (hasBlock)
             {
-                Debug.LogWarning($"[Player Safety] Есть блок на уровне игрока Y={checkY}");
+                
                 return false; // Есть блок на уровне игрока или выше
             }
         }
         
-        Debug.Log($"[Player Safety] Позиция {position} БЕЗОПАСНА ✓");
+        
         return true;
     }
     
@@ -485,7 +605,7 @@ public class GameBootstrap : MonoBehaviour
         if (playerPositionSave != null)
         {
             playerPositionSave.Delete();
-            Debug.Log("[Player] Сохранение позиции игрока удалено");
+            
         }
     }
     
@@ -514,4 +634,5 @@ public class GameBootstrap : MonoBehaviour
         }
     }
 }
+
 

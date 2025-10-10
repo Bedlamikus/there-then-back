@@ -1145,8 +1145,8 @@ MonoBehaviour:
   turretRotationSpeed: 180
   maxAimAngle: 60
   barrelPitchSpeed: 90
-  minBarrelPitch: -10
-  maxBarrelPitch: 45
+  minBarrelPitch: -40
+  maxBarrelPitch: 60
   useLeadTarget: 1
   leadAmount: 0.5
 --- !u!1 &5563819542688433683

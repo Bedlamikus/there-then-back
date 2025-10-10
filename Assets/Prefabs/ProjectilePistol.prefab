@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 6020833388286537305}
   - component: {fileID: 6399732052315989362}
   - component: {fileID: 5924153089686683233}
+  - component: {fileID: 4456334513754225420}
   m_Layer: 7
   m_Name: ProjectilePistol
   m_TagString: Untagged
@@ -163,6 +164,25 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   chainReactionDelay: 0.1
+  maxLifetime: 10
+  destroyOnLifetime: 1
   speed: 20
   ignoreGravity: 1
   directHitRadius: 0.2
+--- !u!114 &4456334513754225420
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4211870640068019189}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bcaac7b371a940842bf0912f4ebaf70c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  magazineSize: 20
+  shootCooldown: 0.3333333
+  reloadTimePerShot: 1.2
+  projectileName: "\u0421\u043D\u0430\u0440\u044F\u0434"
+  projectileIcon: {fileID: 0}

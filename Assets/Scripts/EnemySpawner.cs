@@ -97,11 +97,11 @@ public class EnemySpawner : MonoBehaviour
     {
         if (isInitialized)
         {
-            Debug.LogWarning($"EnemySpawner [{name}]: Уже инициализирован!");
+            
             return;
         }
         
-        Debug.Log($"EnemySpawner [{name}]: Инициализация...");
+        
         
         // Поиск VoxelWorld для проверки безопасности
         if (checkSafeSpawn)
@@ -109,7 +109,7 @@ public class EnemySpawner : MonoBehaviour
             voxelWorld = VoxelWorld.Instance;
             if (voxelWorld == null)
             {
-                Debug.LogWarning($"EnemySpawner [{name}]: VoxelWorld не найден, проверка безопасности отключена");
+                
                 checkSafeSpawn = false;
             }
         }
@@ -121,14 +121,14 @@ public class EnemySpawner : MonoBehaviour
             if (player != null)
             {
                 targetPlayer = player.transform;
-                Debug.Log($"EnemySpawner [{name}]: Игрок найден автоматически: {targetPlayer.name}");
+                
             }
             else
             {
-                Debug.LogWarning($"EnemySpawner [{name}]: PlayerController не найден в сцене!");
+                
                 if (areaMode == SpawnAreaMode.AroundTarget)
                 {
-                    Debug.LogWarning($"EnemySpawner [{name}]: Игрок не найден, используется режим RandomInRadius");
+                    
                     areaMode = SpawnAreaMode.RandomInRadius;
                 }
             }
@@ -139,7 +139,7 @@ public class EnemySpawner : MonoBehaviour
         // Проверяем режим SpawnPoints - если точки не установлены, переключаемся на RandomInRadius
         if (areaMode == SpawnAreaMode.SpawnPoints && (spawnPoints == null || spawnPoints.Length == 0))
         {
-            Debug.LogWarning($"EnemySpawner [{name}]: Режим SpawnPoints, но точки не установлены! Переключаемся на RandomInRadius");
+            
             areaMode = SpawnAreaMode.RandomInRadius;
         }
         
@@ -159,12 +159,12 @@ public class EnemySpawner : MonoBehaviour
                 break;
                 
             case SpawnMode.Manual:
-                Debug.Log($"EnemySpawner [{name}]: Ручной режим. Вызовите SpawnWave() для спавна.");
+                
                 break;
         }
         
         isInitialized = true;
-        Debug.Log($"EnemySpawner [{name}]: Инициализация завершена, режим: {spawnMode}");
+        
     }
     
     void Update()
@@ -226,7 +226,7 @@ public class EnemySpawner : MonoBehaviour
             }
             
             currentWave++;
-            Debug.Log($"EnemySpawner [{name}]: Волна {currentWave} начинается! Врагов: {currentEnemiesPerWave}");
+            
         }
     }
     
@@ -287,7 +287,7 @@ public class EnemySpawner : MonoBehaviour
             GameObject enemy = Instantiate(enemyPrefab, spawnPosition, Quaternion.identity);
             enemy.name = $"Enemy_{currentWave}_{spawned + 1}";
             
-            Debug.Log($"[EnemySpawner] Заспавнен враг '{enemy.name}' на позиции {spawnPosition}");
+            
             
             // Инициализируем EnemyBot если есть
             EnemyBot bot = enemy.GetComponent<EnemyBot>();
@@ -297,7 +297,7 @@ public class EnemySpawner : MonoBehaviour
             }
             else if (bot != null && targetPlayer == null)
             {
-                Debug.LogWarning($"EnemySpawner [{name}]: targetPlayer is null, cannot initialize bot {bot.name}");
+                
             }
             
             spawnedEnemies.Add(enemy);
@@ -306,11 +306,11 @@ public class EnemySpawner : MonoBehaviour
         
         if (spawned < count)
         {
-            Debug.LogWarning($"EnemySpawner [{name}]: Не удалось заспавнить всех врагов. Заспавнено: {spawned}/{count}, попыток: {attempts}");
+            
         }
         else
         {
-            Debug.Log($"EnemySpawner [{name}]: Заспавнено {spawned} врагов за {attempts} попыток");
+            
         }
     }
     
@@ -325,10 +325,10 @@ public class EnemySpawner : MonoBehaviour
         if (basePosition == Vector3.zero && targetPlayer != null)
         {
             basePosition = targetPlayer.position;
-            Debug.LogWarning($"[EnemySpawner] Спавнер находится в (0, 0, 0)! Используем позицию игрока как базу: {basePosition}");
+            
         }
         
-        Debug.Log($"[EnemySpawner] GetSpawnPosition: Базовая позиция спавнера = {basePosition}, режим = {areaMode}");
+        
         
         switch (areaMode)
         {
@@ -337,7 +337,7 @@ public class EnemySpawner : MonoBehaviour
                 Vector2 randomCircle = Random.insideUnitCircle * spawnRadius;
                 basePosition = transform.position + new Vector3(randomCircle.x, 0, randomCircle.y);
                 
-                Debug.Log($"[EnemySpawner] RandomInRadius: Случайная позиция = {basePosition}, радиус = {spawnRadius}");
+                
                 
                 // Если включена проверка безопасности и есть VoxelWorld
                 if (checkSafeSpawn && voxelWorld != null)
@@ -366,11 +366,11 @@ public class EnemySpawner : MonoBehaviour
                     if (spawnPoint != null)
                     {
                         basePosition = spawnPoint.position;
-                        Debug.Log($"[EnemySpawner] SpawnPoints: Выбрана точка спавна = {basePosition}");
+                        
                     }
                     else
                     {
-                        Debug.LogWarning($"[EnemySpawner] SpawnPoints: Точка спавна == null, используем случайную позицию");
+                        
                         // Fallback на случайную позицию
                         Vector2 randomOffset = Random.insideUnitCircle * spawnRadius;
                         basePosition = transform.position + new Vector3(randomOffset.x, 0, randomOffset.y);
@@ -378,7 +378,7 @@ public class EnemySpawner : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning($"[EnemySpawner] SpawnPoints: Точки спавна не установлены! Используем случайную позицию в радиусе {spawnRadius}");
+                    
                     // Fallback на случайную позицию
                     Vector2 randomOffset = Random.insideUnitCircle * spawnRadius;
                     basePosition = transform.position + new Vector3(randomOffset.x, 0, randomOffset.y);
@@ -420,7 +420,7 @@ public class EnemySpawner : MonoBehaviour
         int blockX = Mathf.FloorToInt(position.x);
         int blockZ = Mathf.FloorToInt(position.z);
         
-        Debug.Log($"[EnemySpawner] FindSafeYPosition: Ищем безопасную высоту для ({blockX}, ?, {blockZ}), диапазон Y: [{minSpawnHeight}, {maxSpawnHeight}]");
+        
         
         // Новая логика: ищем снизу ВВЕРХ пока не найдем безопасное место
         for (int y = minSpawnHeight; y <= maxSpawnHeight; y++)
@@ -439,18 +439,18 @@ public class EnemySpawner : MonoBehaviour
                     float distanceToPlayer = Vector3.Distance(safePos, targetPlayer.position);
                     if (distanceToPlayer < minDistanceFromPlayer)
                     {
-                        Debug.Log($"[EnemySpawner] Позиция ({blockX}, {y}, {blockZ}) слишком близко к игроку ({distanceToPlayer:F1}m < {minDistanceFromPlayer}m), ищем дальше");
+                        
                         continue; // Слишком близко к игроку, ищем выше
                     }
                 }
                 
-                Debug.Log($"[EnemySpawner] Найдена безопасная позиция: {safePos}");
+                
                 return safePos;
             }
         }
         
         // Если дошли до верха и не нашли - возвращаем Vector3.zero как признак неудачи
-        Debug.LogWarning($"[EnemySpawner] Не найдена безопасная позиция для ({blockX}, ?, {blockZ}) в диапазоне Y: [{minSpawnHeight}, {maxSpawnHeight}]");
+        
         return Vector3.zero;
     }
     
@@ -504,7 +504,7 @@ public class EnemySpawner : MonoBehaviour
             }
         }
         
-        Debug.Log($"EnemySpawner [{name}]: Установлена цель для врагов: {player.name}");
+        
     }
     
     /// <summary>
@@ -517,7 +517,7 @@ public class EnemySpawner : MonoBehaviour
             StopCoroutine(spawnCoroutine);
             spawnCoroutine = null;
         }
-        Debug.Log($"EnemySpawner [{name}]: Спавн остановлен");
+        
     }
     
     /// <summary>
@@ -538,7 +538,7 @@ public class EnemySpawner : MonoBehaviour
                 break;
         }
         
-        Debug.Log($"EnemySpawner [{name}]: Спавн возобновлен");
+        
     }
     
     /// <summary>
@@ -554,7 +554,7 @@ public class EnemySpawner : MonoBehaviour
             }
         }
         spawnedEnemies.Clear();
-        Debug.Log($"EnemySpawner [{name}]: Все враги уничтожены");
+        
     }
     
     /// <summary>

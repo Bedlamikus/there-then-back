@@ -7,8 +7,8 @@ public class EnemyWeaponController : MonoBehaviour
     [Tooltip("Список префабов снарядов, которыми может стрелять бот")]
     public List<GameObject> availableProjectiles = new List<GameObject>();
     
-    [Header("Shooting Settings")]
-    [Tooltip("Интервал между выстрелами (секунды)")]
+    [Header("Shooting Settings (DEPRECATED - используйте ProjectileAmmoData на префабах)")]
+    [Tooltip("Интервал между выстрелами (секунды) - используется если на снаряде нет ProjectileAmmoData")]
     public float shootInterval = 1f;
     
     [Tooltip("Скорость поворота турели (градусов в секунду)")]
@@ -40,6 +40,9 @@ public class EnemyWeaponController : MonoBehaviour
     private float lastShootTime;
     private int currentProjectileIndex = 0;
     
+    // Магазины для каждого типа снаряда
+    private Dictionary<GameObject, WeaponMagazine> magazines = new Dictionary<GameObject, WeaponMagazine>();
+    
     void Start()
     {
         bot = GetComponent<EnemyBot>();
@@ -57,11 +60,39 @@ public class EnemyWeaponController : MonoBehaviour
             Debug.LogWarning($"[Bot Weapon] Бот {bot.GetSpawnableID()} не имеет снарядов!");
         }
         
+        // Инициализируем магазины для каждого типа снаряда
+        InitializeMagazines();
+        
         lastShootTime = Time.time;
+    }
+    
+    /// <summary>
+    /// Инициализация магазинов для всех снарядов
+    /// </summary>
+    void InitializeMagazines()
+    {
+        magazines.Clear();
+        
+        foreach (GameObject projectilePrefab in availableProjectiles)
+        {
+            if (projectilePrefab == null) continue;
+            
+            // Получаем данные о боеприпасах
+            ProjectileAmmoData ammoData = projectilePrefab.GetComponent<ProjectileAmmoData>();
+            
+            if (ammoData != null)
+            {
+                // Создаем магазин для этого снаряда
+                magazines[projectilePrefab] = new WeaponMagazine(ammoData);
+            }
+        }
     }
     
     void Update()
     {
+        // Обновляем все магазины (автоматическая перезарядка)
+        UpdateMagazines();
+        
         // Поворачиваем турель и ствол к цели
         AimAtTarget();
         
@@ -69,6 +100,17 @@ public class EnemyWeaponController : MonoBehaviour
         if (bot.GetCurrentState() == AIState.Attack)
         {
             TryShoot();
+        }
+    }
+    
+    /// <summary>
+    /// Обновление всех магазинов
+    /// </summary>
+    void UpdateMagazines()
+    {
+        foreach (var magazine in magazines.Values)
+        {
+            magazine.Update(Time.deltaTime);
         }
     }
     
@@ -110,28 +152,31 @@ public class EnemyWeaponController : MonoBehaviour
             }
         }
         
-        Vector3 direction = targetPosition - turret.position;
-        direction.y = 0; // Только горизонтальное вращение
+        Vector3 directionToTarget = targetPosition - turret.position;
+        directionToTarget.y = 0; // Только горизонтальное вращение
         
-        if (direction.sqrMagnitude > 0.01f)
+        if (directionToTarget.sqrMagnitude > 0.01f)
         {
-            // Вычисляем целевой угол в мировых координатах
-            Quaternion targetRotation = Quaternion.LookRotation(direction);
-            
-            // ВАЖНО: Вращаем только по локальной оси Z (модель повернута)
-            // Получаем текущий локальный угол Z
+            // Получаем текущий локальный угол Z и нормализуем его
             float currentLocalZ = turret.localEulerAngles.z;
+            if (currentLocalZ > 180f) currentLocalZ -= 360f; // Нормализуем: [0, 360] → [-180, 180]
             
             // Вычисляем целевой локальный угол Z
             Vector3 localDirection = turret.parent != null 
-                ? turret.parent.InverseTransformDirection(direction) 
-                : direction;
-            float targetLocalZ = Mathf.Atan2(localDirection.x, localDirection.z) * Mathf.Rad2Deg;
+                ? turret.parent.InverseTransformDirection(directionToTarget) 
+                : directionToTarget;
+            
+            // Для вращения вокруг Z-оси: используем X (вправо) и Y (вперед) компоненты
+            float targetLocalZ = Mathf.Atan2(localDirection.y, localDirection.x) * Mathf.Rad2Deg;
             
             // Добавляем смещение 90° для корректировки модели
             targetLocalZ += 90f;
             
-            // Плавно поворачиваем по локальной Z
+            // Нормализуем целевой угол: [0, 360] → [-180, 180]
+            if (targetLocalZ > 180f) targetLocalZ -= 360f;
+            if (targetLocalZ < -180f) targetLocalZ += 360f;
+            
+            // Плавно поворачиваем турель по локальной Z оси
             float newLocalZ = Mathf.MoveTowardsAngle(currentLocalZ, targetLocalZ, turretRotationSpeed * Time.deltaTime);
             turret.localEulerAngles = new Vector3(0, 0, newLocalZ);
         }
@@ -161,14 +206,15 @@ public class EnemyWeaponController : MonoBehaviour
         
         Vector3 directionToTarget = targetPosition - barrel.position;
         
-        // Вычисляем угол наклона (pitch) в локальных координатах
-        Vector3 localDirection = barrel.parent != null 
-            ? barrel.parent.InverseTransformDirection(directionToTarget) 
-            : directionToTarget;
+        // Вычисляем pitch относительно горизонтали (в мировых координатах)
+        // Горизонтальное расстояние (XZ плоскость)
+        float horizontalDistance = new Vector3(directionToTarget.x, 0, directionToTarget.z).magnitude;
         
-        // Вычисляем целевой угол наклона
-        float horizontalDistance = new Vector3(localDirection.x, 0, localDirection.z).magnitude;
-        float targetPitch = -Mathf.Atan2(localDirection.y, horizontalDistance) * Mathf.Rad2Deg;
+        // Вертикальная составляющая
+        float verticalDistance = directionToTarget.y;
+        
+        // Вычисляем угол наклона (инвертирован для правильного направления)
+        float targetPitch = -Mathf.Atan2(verticalDistance, horizontalDistance) * Mathf.Rad2Deg;
         
         // Ограничиваем угол наклона
         targetPitch = Mathf.Clamp(targetPitch, minBarrelPitch, maxBarrelPitch);
@@ -187,11 +233,24 @@ public class EnemyWeaponController : MonoBehaviour
     /// </summary>
     void TryShoot()
     {
-        // Проверяем интервал стрельбы
-        if (Time.time - lastShootTime < shootInterval) return;
-        
         // Проверяем наличие снарядов
         if (availableProjectiles.Count == 0) return;
+        
+        // Получаем текущий снаряд
+        GameObject projectilePrefab = GetCurrentProjectile();
+        if (projectilePrefab == null) return;
+        
+        // Проверяем магазин для этого снаряда
+        if (magazines.TryGetValue(projectilePrefab, out WeaponMagazine magazine))
+        {
+            // Используем магазин - проверяем патроны и кулдаун
+            if (!magazine.CanShoot()) return;
+        }
+        else
+        {
+            // Fallback на старую систему (если нет ProjectileAmmoData на префабе)
+            if (Time.time - lastShootTime < shootInterval) return;
+        }
         
         // ВАЖНО: Проверяем что бот полностью остановился
         if (!IsBotStopped()) return;
@@ -200,7 +259,7 @@ public class EnemyWeaponController : MonoBehaviour
         if (!IsAimedAtTarget()) return;
         
         // Стреляем
-        Shoot();
+        Shoot(projectilePrefab, magazine);
         
         lastShootTime = Time.time;
     }
@@ -247,7 +306,7 @@ public class EnemyWeaponController : MonoBehaviour
     /// <summary>
     /// Выполняет выстрел
     /// </summary>
-    void Shoot()
+    void Shoot(GameObject projectilePrefab, WeaponMagazine magazine)
     {
         Transform shootPoint = bot.GetShootPoint();
         
@@ -257,20 +316,25 @@ public class EnemyWeaponController : MonoBehaviour
             return;
         }
         
-        // Получаем текущий снаряд
-        GameObject projectilePrefab = GetCurrentProjectile();
-        
         if (projectilePrefab == null)
         {
             Debug.LogWarning($"[Bot Weapon] Нет доступных снарядов для бота {bot.GetSpawnableID()}");
             return;
         }
         
+        // Используем патрон из магазина
+        if (magazine != null)
+        {
+            if (!magazine.TryShoot())
+            {
+                // Не удалось выстрелить (нет патронов или кулдаун)
+                return;
+            }
+        }
+        
         // Создаем снаряд В ТОЧКЕ ВЫСТРЕЛА (на конце ствола)
         // Снаряд сам знает как ему лететь (использует свои параметры)
         GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
-        
-        Debug.Log($"[Bot Weapon] Бот {bot.GetSpawnableID()} выстрелил снарядом {projectilePrefab.name}");
     }
     
     /// <summary>
@@ -307,7 +371,6 @@ public class EnemyWeaponController : MonoBehaviour
             GameObject standardProjectile = FindProjectileByType("Dinamit");
             if (standardProjectile != null)
             {
-                Debug.Log($"[Bot Weapon] Стрельба вниз ({verticalAngle:F1}°), выбран стандартный снаряд (пушечное ядро)");
                 return standardProjectile;
             }
         }
@@ -318,7 +381,6 @@ public class EnemyWeaponController : MonoBehaviour
             GameObject dinamitProjectile = FindProjectileByType("Dinamit");
             if (dinamitProjectile != null)
             {
-                Debug.Log($"[Bot Weapon] Нет пути до игрока, пробуем динамит (создает меш)");
                 return dinamitProjectile;
             }
         }
@@ -327,14 +389,12 @@ public class EnemyWeaponController : MonoBehaviour
         GameObject rocketProjectile = FindProjectileByType("Rocket");
         if (rocketProjectile != null)
         {
-            Debug.Log($"[Bot Weapon] Стрельба прямо/вверх ({verticalAngle:F1}°), выбрана ракета");
             return rocketProjectile;
         }
         
         GameObject pistolProjectile = FindProjectileByType("Pistol");
         if (pistolProjectile != null)
         {
-            Debug.Log($"[Bot Weapon] Стрельба прямо/вверх ({verticalAngle:F1}°), выбрана пуля");
             return pistolProjectile;
         }
         
@@ -365,7 +425,6 @@ public class EnemyWeaponController : MonoBehaviour
         if (index >= 0 && index < availableProjectiles.Count)
         {
             currentProjectileIndex = index;
-            Debug.Log($"[Bot Weapon] Бот {bot.GetSpawnableID()} выбрал снаряд #{index}: {availableProjectiles[index].name}");
         }
     }
     
@@ -375,5 +434,28 @@ public class EnemyWeaponController : MonoBehaviour
     public int GetProjectileCount()
     {
         return availableProjectiles.Count;
+    }
+    
+    /// <summary>
+    /// Получает магазин для конкретного снаряда
+    /// </summary>
+    public WeaponMagazine GetMagazine(GameObject projectilePrefab)
+    {
+        if (magazines.TryGetValue(projectilePrefab, out WeaponMagazine magazine))
+        {
+            return magazine;
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Получает магазин текущего снаряда
+    /// </summary>
+    public WeaponMagazine GetCurrentMagazine()
+    {
+        GameObject currentProjectile = GetCurrentProjectile();
+        if (currentProjectile == null) return null;
+        
+        return GetMagazine(currentProjectile);
     }
 }

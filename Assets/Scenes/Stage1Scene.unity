@@ -1492,6 +1492,10 @@ MonoBehaviour:
   hysteresisDistance: 1
   playerLayerMask:
     serializedVersion: 2
+    m_Bits: 64
+  aimRaycastDistance: 100
+  aimLayerMask:
+    serializedVersion: 2
     m_Bits: 4294967295
   cameraJoystick: {fileID: 1562530433}
 --- !u!4 &1821742253
@@ -1762,6 +1766,10 @@ PrefabInstance:
     - target: {fileID: 7783856865598109975, guid: b44f0779392381b419c152d5ddc6697b, type: 3}
       propertyPath: m_Name
       value: TurretJoystick
+      objectReference: {fileID: 0}
+    - target: {fileID: 7783856865598109975, guid: b44f0779392381b419c152d5ddc6697b, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7928936989322544089, guid: b44f0779392381b419c152d5ddc6697b, type: 3}
       propertyPath: m_Pivot.x

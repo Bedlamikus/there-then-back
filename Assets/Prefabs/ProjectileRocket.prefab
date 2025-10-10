@@ -5332,6 +5332,7 @@ GameObject:
   - component: {fileID: 3000541026425863661}
   - component: {fileID: 2281406744105696637}
   - component: {fileID: 2537159659558939354}
+  - component: {fileID: -6403484196794987455}
   m_Layer: 7
   m_Name: ProjectileRocket
   m_TagString: Untagged
@@ -5487,6 +5488,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   chainReactionDelay: 0.1
+  maxLifetime: 10
+  destroyOnLifetime: 1
   speed: 25
   ignoreGravity: 0
   acceleration: 5
@@ -5501,3 +5504,20 @@ MonoBehaviour:
   rocketLight: {fileID: 655580944094903775}
   explosionRadius: 4
   impactForce: 50
+--- !u!114 &-6403484196794987455
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8801266385320015286}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bcaac7b371a940842bf0912f4ebaf70c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  magazineSize: 3
+  shootCooldown: 1
+  reloadTimePerShot: 2
+  projectileName: "\u0421\u043D\u0430\u0440\u044F\u0434"
+  projectileIcon: {fileID: 0}
