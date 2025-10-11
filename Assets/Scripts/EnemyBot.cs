@@ -99,6 +99,9 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     private void UpdateServices()
     {
+        if (!isInitialized)
+            return;
+            
         movementService.Update();
         aiStateMachine.Update();
         
@@ -108,6 +111,9 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     private void HandleMovement()
     {
+        if (!isInitialized)
+            return;
+            
         Vector3 moveDirection = aiStateMachine.GetMoveDirection();
         
         // Обновляем pathfinding service с текущим направлением движения

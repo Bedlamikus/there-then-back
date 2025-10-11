@@ -15,4 +15,5 @@ public class GlobalEvents
     public static UnityEvent<Vector2> TurretRotation = new();  // Вращение башни от джойстика
     public static UnityEvent<GameObject> ProjectileSelected = new();  // Выбран префаб снаряда
     public static UnityEvent<Vector3> CameraAimPoint = new();  // Точка прицеливания в центре экрана (мировые координаты)
+    public static UnityEvent RegenerateWorld = new();  // Событие перегенерации мира
 }

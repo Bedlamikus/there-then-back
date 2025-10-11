@@ -194,7 +194,12 @@ public class KinematicProjectile : Projectile
     {
         yield break; // Нет таймера взрыва
     }
-    
+
+    protected override void DoForce()
+    {
+        //base.DoForce();
+    }
+
     void OnDrawGizmosSelected()
     {
         // Визуализация радиуса прямого попадания

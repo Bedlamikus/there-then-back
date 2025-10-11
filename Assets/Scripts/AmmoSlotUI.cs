@@ -39,7 +39,7 @@ public class AmmoSlotUI : MonoBehaviour
         // Плавная анимация масштаба
         if (useScaleAnimation)
         {
-            float desiredScale = isLoaded ? targetScale : 0.5f;
+            float desiredScale = isLoaded ? targetScale : 0f;
             currentScale = Mathf.Lerp(currentScale, desiredScale, scaleAnimationSpeed * Time.deltaTime);
             
             if (ammoImage != null)

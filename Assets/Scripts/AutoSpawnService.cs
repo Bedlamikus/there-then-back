@@ -23,6 +23,7 @@ public class AutoSpawnService
     private bool isWaitingForVoxelWorld = false;
     private float lastVoxelWorldCheckTime = 0f;
     private float voxelWorldCheckInterval = 0.5f; // Проверяем каждые 0.5 секунды
+    private bool hasMovedPlayerToSpawn = false; // Флаг перемещения игрока на точку спавна
     
     public AutoSpawnService()
     {
@@ -69,12 +70,28 @@ public class AutoSpawnService
         }
         
         Vector3 currentPosition = spawnable.GetTransform().position;
+        Vector3 startPosition = currentPosition;
+        
+        // Если регистрируем игрока и VoxelWorld готов, используем точку спавна из мира
+        if (id == "Player" && voxelWorld != null && voxelWorld.IsWorldReady)
+        {
+            Vector3 worldSpawnPoint = voxelWorld.PlayerSpawnPoint;
+            if (worldSpawnPoint != Vector3.zero)
+            {
+                startPosition = worldSpawnPoint;
+                Debug.Log($"[AutoSpawn] Игрок зарегистрирован с точкой спавна из мира: {worldSpawnPoint}");
+            }
+            else
+            {
+                Debug.LogWarning($"[AutoSpawn] Точка спавна из мира не установлена, используем текущую позицию: {currentPosition}");
+            }
+        }
         
         var data = new SpawnableData
         {
             spawnable = spawnable,
-            startPosition = currentPosition,
-            lastSavedPosition = currentPosition,
+            startPosition = startPosition,
+            lastSavedPosition = startPosition,
             hasValidSavePosition = true,
             lastSaveTime = Time.time
         };
@@ -152,6 +169,39 @@ public class AutoSpawnService
             {
                 TryFindVoxelWorld();
                 lastVoxelWorldCheckTime = currentTime;
+            }
+        }
+        
+        // Если это игрок и мир готов, но мы еще не переместили игрока на точку спавна
+        if (id == "Player" && !hasMovedPlayerToSpawn && voxelWorld != null && voxelWorld.IsWorldReady)
+        {
+            Vector3 worldSpawnPoint = voxelWorld.PlayerSpawnPoint;
+            if (worldSpawnPoint != Vector3.zero)
+            {
+                // Отключаем CharacterController перед перемещением
+                CharacterController controller = spawnable.GetGameObject().GetComponent<CharacterController>();
+                bool wasControllerEnabled = false;
+                if (controller != null)
+                {
+                    wasControllerEnabled = controller.enabled;
+                    controller.enabled = false;
+                }
+                
+                // Перемещаем игрока на точку спавна
+                spawnable.GetTransform().position = worldSpawnPoint;
+                
+                // Включаем CharacterController обратно
+                if (controller != null && wasControllerEnabled)
+                {
+                    controller.enabled = true;
+                }
+                
+                // Обновляем данные спавна
+                data.startPosition = worldSpawnPoint;
+                data.lastSavedPosition = worldSpawnPoint;
+                
+                hasMovedPlayerToSpawn = true;
+                Debug.Log($"[AutoSpawn] Игрок перемещен на точку спавна мира: {worldSpawnPoint}");
             }
         }
         
@@ -523,6 +573,9 @@ public class AutoSpawnService
             kvp.Value.lastSaveTime = Time.time;
         }
         
+        // Сбрасываем флаг перемещения игрока, чтобы он переместился на новую точку спавна
+        hasMovedPlayerToSpawn = false;
+        
         
     }
     
@@ -565,6 +618,35 @@ public class AutoSpawnService
     public void SetSaveInterval(float interval)
     {
         saveInterval = Mathf.Max(0.1f, interval);
+    }
+    
+    /// <summary>
+    /// Обработка регенерации мира для игрока
+    /// </summary>
+    public void OnWorldRegenerated(PlayerController player)
+    {
+        string id = "Player";
+        
+        if (spawnables.TryGetValue(id, out var data))
+        {
+            // Сбрасываем флаг перемещения
+            hasMovedPlayerToSpawn = false;
+            
+            // Обновляем точку спавна из нового мира
+            if (voxelWorld != null && voxelWorld.IsWorldReady)
+            {
+                Vector3 worldSpawnPoint = voxelWorld.PlayerSpawnPoint;
+                if (worldSpawnPoint != Vector3.zero)
+                {
+                    data.startPosition = worldSpawnPoint;
+                    data.lastSavedPosition = worldSpawnPoint;
+                    data.hasValidSavePosition = true;
+                    data.lastSaveTime = Time.time;
+                    
+                    Debug.Log($"[AutoSpawn] Игрок обновлен после регенерации мира. Новая точка спавна: {worldSpawnPoint}");
+                }
+            }
+        }
     }
 }
 

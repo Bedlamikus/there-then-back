@@ -4,6 +4,9 @@ using System.Collections;
 [RequireComponent(typeof(Rigidbody))]
 public class Projectile : MonoBehaviour
 {
+    [Header("Force Settings")]
+    public float force = 35f;
+
     [Header("Explosion Settings")]
     public float radius = 6f;
     public float maxDamage = 10f;
@@ -256,8 +259,17 @@ public class Projectile : MonoBehaviour
         Destroy(gameObject);
     }
 
+    protected virtual void DoForce()
+    {
+        GetComponent<Rigidbody>().AddForce(transform.forward * force, ForceMode.Impulse);
+    }
+
     protected virtual IEnumerator LifetimeCoroutine()
     {
+        yield return null;
+
+        DoForce();
+
         // Ждем истечения времени жизни
         yield return new WaitForSeconds(maxLifetime);
         

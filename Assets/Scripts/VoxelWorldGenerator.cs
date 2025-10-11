@@ -6,30 +6,61 @@ public class VoxelWorldGenerator : MonoBehaviour
     public int chunksX = 5;
     public int chunksZ = 5;
 
-    [Header("Noise (height)")]
-    public int seed = 12345;
-    [Range(1f, 512f)] public float heightScale = 96f;
+    [Header("Noise (height) - Base Values")]
+    [Tooltip("Базовый seed - при регенерации будет случайный")]
+    public int baseSeed = 12345;
+    [Range(1f, 512f)] public float baseHeightScale = 96f;
     [Range(1, 8)] public int octaves = 4;
     [Range(0f, 1f)] public float persistence = 0.5f;
     [Range(1.5f, 4f)] public float lacunarity = 2.0f;
-    public float heightMultiplier = 40f;
-    public float baseHeight = 64f;
+    public float baseHeightMultiplier = 40f;
+    public float baseHeightBase = 64f;
 
-    [Header("Noise (layers thickness)")]
-    public float grassThicknessScale = 24f;
-    public float dirtThicknessScale = 36f;
+    [Header("Noise (layers thickness) - Base Values")]
+    public float baseGrassThicknessScale = 24f;
+    public float baseDirtThicknessScale = 36f;
 
-    [Header("Caves")]
+    [Header("Caves - Base Values")]
     public bool enableCaves = true;
-    public float caveScale = 56f;
-    public int caveOctaves = 3;
-    public float cavePersistence = 0.52f;
-    public float caveLacunarity = 2.0f;
-    public float caveTwist = 0.25f;
+    [Tooltip("Масштаб пещер (меньше = больше мелких пещер, больше = меньше крупных)")]
+    public float baseCaveScale = 38f;                // Увеличено с 28 → более гладкие пещеры среднего размера
+    [Tooltip("Количество октав шума (больше = более детальные пещеры)")]
+    public int caveOctaves = 3;                      // Вернули к 3 → меньше "рваности"
+    public float cavePersistence = 0.58f;            // Увеличено с 0.48 → более гладкие границы
+    public float caveLacunarity = 2.0f;              // Вернули к 2.0 → меньше резких переходов
+    [Tooltip("Извилистость пещер (больше = более сложная форма)")]
+    public float baseCaveTwist = 0.35f;              // Уменьшено с 0.45 → более плавные изгибы
     public float caveMidHeight01 = 0.55f;
-    public float caveThresholdBottom = 0.60f;
-    public float caveThresholdMid = 0.58f;
-    public float caveThresholdTop = 0.64f;
+    [Tooltip("Пороги для создания пещер (меньше = больше пещер)")]
+    public float caveThresholdBottom = 0.52f;        // Немного повышено для меньше хаоса
+    public float caveThresholdMid = 0.50f;           // Немного повышено для гладкости
+    public float caveThresholdTop = 0.56f;           // Немного повышено
+    
+    [Header("Randomization Ranges")]
+    [Tooltip("Диапазон рандомизации для heightScale (± процент)")]
+    [Range(0f, 0.3f)] public float heightScaleVariation = 0.15f;
+    [Tooltip("Диапазон рандомизации для heightMultiplier (± процент)")]
+    [Range(0f, 0.3f)] public float heightMultiplierVariation = 0.15f;
+    [Tooltip("Диапазон рандомизации для baseHeight (± процент)")]
+    [Range(0f, 0.2f)] public float baseHeightVariation = 0.1f;
+    [Tooltip("Диапазон рандомизации для grassThicknessScale (± процент)")]
+    [Range(0f, 0.2f)] public float grassThicknessVariation = 0.1f;
+    [Tooltip("Диапазон рандомизации для dirtThicknessScale (± процент)")]
+    [Range(0f, 0.2f)] public float dirtThicknessVariation = 0.1f;
+    [Tooltip("Диапазон рандомизации для caveScale (± процент)")]
+    [Range(0f, 0.3f)] public float caveScaleVariation = 0.15f;
+    [Tooltip("Диапазон рандомизации для caveTwist (± процент)")]
+    [Range(0f, 0.5f)] public float caveTwistVariation = 0.3f;
+    
+    // Текущие рандомизированные значения
+    private int currentSeed;
+    private float currentHeightScale;
+    private float currentHeightMultiplier;
+    private float currentBaseHeight;
+    private float currentGrassThicknessScale;
+    private float currentDirtThicknessScale;
+    private float currentCaveScale;
+    private float currentCaveTwist;
 
     // Типы блоков
     const int Block_Grass = 0;
@@ -48,7 +79,31 @@ public class VoxelWorldGenerator : MonoBehaviour
 
     void Awake()
     {
-        var rng = new System.Random(seed);
+        // Инициализируем первый раз
+        RandomizeParameters();
+    }
+    
+    /// <summary>
+    /// Рандомизация параметров генерации для создания уникального мира
+    /// </summary>
+    public void RandomizeParameters()
+    {
+        // Генерируем новый случайный seed
+        currentSeed = Random.Range(1, 999999);
+        
+        // Рандомизируем параметры в пределах заданных диапазонов
+        currentHeightScale = RandomizeValue(baseHeightScale, heightScaleVariation);
+        currentHeightMultiplier = RandomizeValue(baseHeightMultiplier, heightMultiplierVariation);
+        currentBaseHeight = RandomizeValue(baseHeightBase, baseHeightVariation);
+        currentGrassThicknessScale = RandomizeValue(baseGrassThicknessScale, grassThicknessVariation);
+        currentDirtThicknessScale = RandomizeValue(baseDirtThicknessScale, dirtThicknessVariation);
+        currentCaveScale = RandomizeValue(baseCaveScale, caveScaleVariation);
+        currentCaveTwist = RandomizeValue(baseCaveTwist, caveTwistVariation);
+        
+        Debug.Log($"VoxelWorldGenerator: Параметры рандомизированы. Seed: {currentSeed}");
+        
+        // Генерируем новые офсеты на основе нового seed
+        var rng = new System.Random(currentSeed);
         heightOffset = new Vector2(rng.Next(-100000, 100000), rng.Next(-100000, 100000));
         grassOffset = new Vector2(rng.Next(-100000, 100000), rng.Next(-100000, 100000));
         dirtOffset = new Vector2(rng.Next(-100000, 100000), rng.Next(-100000, 100000));
@@ -61,6 +116,15 @@ public class VoxelWorldGenerator : MonoBehaviour
             rng.Next(-100000, 100000),
             rng.Next(-100000, 100000),
             rng.Next(-100000, 100000));
+    }
+    
+    /// <summary>
+    /// Рандомизирует значение в пределах ± variation процентов
+    /// </summary>
+    private float RandomizeValue(float baseValue, float variation)
+    {
+        float randomFactor = Random.Range(-variation, variation);
+        return baseValue * (1f + randomFactor);
     }
 
     /// <summary>
@@ -78,13 +142,13 @@ public class VoxelWorldGenerator : MonoBehaviour
                 int worldX = cx * VoxelChunk16.WIDTH + x;
                 int worldZ = cz * VoxelChunk16.DEPTH + z;
 
-                float h01 = FBm(worldX, worldZ, heightScale, octaves, persistence, lacunarity, heightOffset);
-                int surfaceY = Mathf.Clamp(Mathf.FloorToInt(baseHeight + h01 * heightMultiplier), 0, VoxelChunk16.HEIGHT - 1);
+                float h01 = FBm(worldX, worldZ, currentHeightScale, octaves, persistence, lacunarity, heightOffset);
+                int surfaceY = Mathf.Clamp(Mathf.FloorToInt(currentBaseHeight + h01 * currentHeightMultiplier), 0, VoxelChunk16.HEIGHT - 1);
 
-                float g01 = Perlin01(worldX, worldZ, grassThicknessScale, grassOffset);
+                float g01 = Perlin01(worldX, worldZ, currentGrassThicknessScale, grassOffset);
                 int grassThickness = Mathf.Clamp(Mathf.FloorToInt(g01 * 4f), 0, 3);
 
-                float d01 = Perlin01(worldX, worldZ, dirtThicknessScale, dirtOffset);
+                float d01 = Perlin01(worldX, worldZ, currentDirtThicknessScale, dirtOffset);
                 int dirtThickness = Mathf.Clamp(Mathf.FloorToInt(d01 * 8f), 0, 7);
 
                 int grassStartY = Mathf.Max(0, surfaceY - grassThickness + 1);
@@ -117,7 +181,7 @@ public class VoxelWorldGenerator : MonoBehaviour
     // ===== Руды =====
     void GenerateOresInChunk(int[,,] data, int cx, int cz)
     {
-        int chSeed = seed ^ (cx * 73856093) ^ (cz * 19349663);
+        int chSeed = currentSeed ^ (cx * 73856093) ^ (cz * 19349663);
         var rng = new System.Random(chSeed);
 
         Vector3Int sizeCoal = new Vector3Int(5, 4, 3);
@@ -193,14 +257,14 @@ public class VoxelWorldGenerator : MonoBehaviour
                     int wy = y;
                     int wz = cz * VoxelChunk16.DEPTH + z;
 
-                    float n = FBm3D01(wx, wy, wz, caveScale, caveOctaves,
+                    float n = FBm3D01(wx, wy, wz, currentCaveScale, caveOctaves,
                                       cavePersistence, caveLacunarity, caveOffsetA, caveOffsetB);
 
-                    if (caveTwist > 0f)
+                    if (currentCaveTwist > 0f)
                     {
-                        float twist = Mathf.PerlinNoise((wx + caveOffsetB.x) / caveScale,
-                                                        (wz + caveOffsetB.z) / caveScale);
-                        n = Mathf.Lerp(n, (n * 0.7f + twist * 0.3f), caveTwist);
+                        float twist = Mathf.PerlinNoise((wx + caveOffsetB.x) / currentCaveScale,
+                                                        (wz + caveOffsetB.z) / currentCaveScale);
+                        n = Mathf.Lerp(n, (n * 0.7f + twist * 0.3f), currentCaveTwist);
                     }
 
                     float t = (float)wy / (H - 1);

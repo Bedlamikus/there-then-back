@@ -45,6 +45,10 @@ public class VoxelWorld : MonoBehaviour
     // Флаги состояния мира
     public bool IsGenerating { get; private set; } = false;
     public bool IsWorldReady { get; private set; } = false;
+    
+    // Точка спавна игрока
+    private Vector3 playerSpawnPoint = Vector3.zero;
+    public Vector3 PlayerSpawnPoint => playerSpawnPoint;
 
     void Awake()
     {
@@ -109,7 +113,11 @@ public class VoxelWorld : MonoBehaviour
         
         IsGenerating = false;
         IsWorldReady = true;
-        Debug.Log($"VoxelWorld: Инициализация завершена ({_chunks.Count} чанков), мир готов!");
+        
+        // Вычисляем точку спавна игрока
+        CalculatePlayerSpawnPoint();
+        
+        Debug.Log($"VoxelWorld: Инициализация завершена ({_chunks.Count} чанков), мир готов! Точка спавна: {playerSpawnPoint}");
     }
     
     /// <summary>
@@ -246,6 +254,10 @@ public class VoxelWorld : MonoBehaviour
             {
                 CreateChunk(cx, cz, null, null);
             }
+        
+        // Вычисляем точку спавна после генерации
+        CalculatePlayerSpawnPoint();
+        Debug.Log($"VoxelWorld: Мгновенная генерация завершена. Точка спавна: {playerSpawnPoint}");
     }
     
     /// <summary>
@@ -550,6 +562,55 @@ public class VoxelWorld : MonoBehaviour
     // ========== УТИЛИТЫ ДЛЯ СПАВНА ==========
     
     /// <summary>
+    /// Рассчитать точку спавна игрока при генерации мира
+    /// Точка находится в центре мира, на один блок выше поверхности
+    /// </summary>
+    private void CalculatePlayerSpawnPoint()
+    {
+        if (_chunks.Count == 0)
+        {
+            Debug.LogWarning("VoxelWorld: Нет чанков для расчета точки спавна, используем центр мира на высоте 80");
+            playerSpawnPoint = new Vector3(chunksX * VoxelChunk16.WIDTH / 2f, 80f, chunksZ * VoxelChunk16.DEPTH / 2f);
+            return;
+        }
+        
+        // Вычисляем центр мира
+        int centerX = (chunksX * VoxelChunk16.WIDTH) / 2;
+        int centerZ = (chunksZ * VoxelChunk16.DEPTH) / 2;
+        
+        // Ищем поверхность в центре мира (сверху вниз)
+        for (int y = VoxelChunk16.HEIGHT - 1; y >= 10; y--)
+        {
+            // Проверяем, есть ли твердый блок
+            if (HasBlockAt(centerX, y, centerZ))
+            {
+                // Проверяем, что над блоком свободно (минимум 3 блока для игрока)
+                bool isClearAbove = true;
+                for (int checkY = y + 1; checkY <= y + 3 && checkY < VoxelChunk16.HEIGHT; checkY++)
+                {
+                    if (HasBlockAt(centerX, checkY, centerZ))
+                    {
+                        isClearAbove = false;
+                        break;
+                    }
+                }
+                
+                if (isClearAbove)
+                {
+                    // Нашли поверхность - устанавливаем точку спавна на 1 блок выше (y + 1)
+                    playerSpawnPoint = new Vector3(centerX + 0.5f, y + 1f, centerZ + 0.5f);
+                    Debug.Log($"VoxelWorld: Точка спавна рассчитана - центр мира ({centerX}, {centerZ}), высота поверхности: {y}");
+                    return;
+                }
+            }
+        }
+        
+        // Если не нашли поверхность - используем высоту по умолчанию
+        Debug.LogWarning($"VoxelWorld: Не найдена поверхность в центре мира, используем высоту 80");
+        playerSpawnPoint = new Vector3(centerX + 0.5f, 80f, centerZ + 0.5f);
+    }
+    
+    /// <summary>
     /// Получить безопасную позицию для спавна игрока
     /// </summary>
     public Vector3 GetSafeSpawnPosition()
@@ -656,4 +717,80 @@ public class VoxelWorld : MonoBehaviour
         
         StartCoroutine(InitializeWorld());
     }
+    
+    /// <summary>
+    /// Корутина полной регенерации мира (вызывается из GameBootstrap)
+    /// </summary>
+    public System.Collections.IEnumerator RegenerateWorldCoroutine()
+    {
+        IsGenerating = true;
+        IsWorldReady = false;
+        
+        Debug.Log("VoxelWorld: Начинаем регенерацию...");
+        
+        // 1. Удаляем все сохранения чанков
+        Debug.Log("VoxelWorld: Удаление сохранений...");
+        for (int cz = 0; cz < chunksZ; cz++)
+        {
+            for (int cx = 0; cx < chunksX; cx++)
+            {
+                string chunkName = $"Chunk_{cx}_{cz}";
+                SaveManager.DeleteSave(chunkName);
+            }
+        }
+        
+        // 2. Сбрасываем флаг первого запуска для перегенерации
+        var settings = new GameSettingsData();
+        settings.isFirstRun = true;
+        settings.worldChunksX = chunksX;
+        settings.worldChunksZ = chunksZ;
+        gameSettings.Data = settings;
+        gameSettings.Save();
+        
+        Debug.Log("VoxelWorld: Сохранения удалены");
+        yield return null;
+        
+        // 3. Очищаем текущие чанки
+        Debug.Log("VoxelWorld: Очистка старых чанков...");
+        for (int i = transform.childCount - 1; i >= 0; i--)
+        {
+            Destroy(transform.GetChild(i).gameObject);
+        }
+        _chunks.Clear();
+        yield return new WaitForSeconds(0.1f); // Даем время на уничтожение объектов
+        
+        // 4. Рандомизируем параметры генератора для нового уникального мира
+        Debug.Log("VoxelWorld: Рандомизация параметров генератора...");
+        if (generator != null)
+        {
+            generator.RandomizeParameters();
+        }
+        yield return null;
+        
+        // 5. Генерируем новый мир
+        Debug.Log("VoxelWorld: Генерация нового мира...");
+        if (useProgressiveGeneration)
+        {
+            yield return StartCoroutine(GenerateWorldProgressive());
+        }
+        else
+        {
+            Generate();
+        }
+        
+        // Помечаем что уже не первый запуск (для следующих загрузок)
+        settings.isFirstRun = false;
+        gameSettings.Data = settings;
+        gameSettings.Save();
+        
+        IsGenerating = false;
+        IsWorldReady = true;
+        
+        // 6. Вычисляем новую точку спавна
+        CalculatePlayerSpawnPoint();
+        Debug.Log($"VoxelWorld: Новая точка спавна: {playerSpawnPoint}");
+        
+        Debug.Log("VoxelWorld: Регенерация мира завершена!");
+    }
+    
 }

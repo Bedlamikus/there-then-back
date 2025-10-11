@@ -315,7 +315,12 @@ public class HomingProjectile : Projectile
     
     public Transform GetCurrentTarget() => target;
     public bool HasTarget() => hasTarget && target != null;
-    
+
+    protected override void DoForce()
+    {
+        //base.DoForce();
+    }
+
     void OnDrawGizmosSelected()
     {
         // Визуализация радиуса поиска цели

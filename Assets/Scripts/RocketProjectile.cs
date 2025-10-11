@@ -361,7 +361,12 @@ public class RocketProjectile : Projectile
         yield return new WaitForSeconds(0.1f);
         Destroy(gameObject);
     }
-    
+
+    protected override void DoForce()
+    {
+        //base.DoForce();
+    }
+
     void OnDrawGizmosSelected()
     {
         // Визуализация радиуса взрыва

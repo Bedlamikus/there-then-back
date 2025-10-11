@@ -558,6 +558,35 @@ public class EnemySpawner : MonoBehaviour
     }
     
     /// <summary>
+    /// Деспавн всех врагов (для регенерации мира)
+    /// </summary>
+    public void DespawnAllEnemies()
+    {
+        Debug.Log($"EnemySpawner [{name}]: Деспавн {spawnedEnemies.Count} врагов...");
+        
+        // Останавливаем текущую корутину спавна
+        if (spawnCoroutine != null)
+        {
+            StopCoroutine(spawnCoroutine);
+            spawnCoroutine = null;
+        }
+        
+        // Уничтожаем всех врагов
+        foreach (var enemy in spawnedEnemies)
+        {
+            if (enemy != null)
+            {
+                Destroy(enemy);
+            }
+        }
+        
+        // Очищаем список
+        spawnedEnemies.Clear();
+        
+        Debug.Log($"EnemySpawner [{name}]: Все враги деспавнены");
+    }
+    
+    /// <summary>
     /// Получить количество живых врагов
     /// </summary>
     public int GetAliveEnemiesCount()
@@ -571,6 +600,68 @@ public class EnemySpawner : MonoBehaviour
     public int GetCurrentWave()
     {
         return currentWave;
+    }
+    
+    /// <summary>
+    /// Респавн всех врагов после регенерации мира
+    /// </summary>
+    public void RespawnAllEnemies()
+    {
+        // Очищаем список заспавненных врагов (они уже уничтожены)
+        spawnedEnemies.Clear();
+        
+        // Сбрасываем счетчик волн
+        currentWave = 0;
+        currentEnemiesPerWave = enemiesPerSpawn;
+        
+        // Обновляем VoxelWorld (может быть новый)
+        if (checkSafeSpawn)
+        {
+            voxelWorld = VoxelWorld.Instance;
+        }
+        
+        // Обновляем цель игрока (может быть переспавнен)
+        if (targetPlayer == null || areaMode == SpawnAreaMode.AroundTarget)
+        {
+            PlayerController player = FindObjectOfType<PlayerController>();
+            if (player != null)
+            {
+                targetPlayer = player.transform;
+                Debug.Log($"EnemySpawner [{name}]: Обновлена цель игрока после регенерации");
+            }
+        }
+        
+        // Останавливаем текущую корутину если есть
+        if (spawnCoroutine != null)
+        {
+            StopCoroutine(spawnCoroutine);
+            spawnCoroutine = null;
+        }
+        
+        // Запускаем спавн в зависимости от режима
+        switch (spawnMode)
+        {
+            case SpawnMode.OnStart:
+                StartCoroutine(SpawnWithDelay(initialDelay));
+                Debug.Log($"EnemySpawner [{name}]: Запланирован спавн врагов через {initialDelay}с");
+                break;
+                
+            case SpawnMode.Continuous:
+                spawnCoroutine = StartCoroutine(ContinuousSpawnCoroutine());
+                Debug.Log($"EnemySpawner [{name}]: Запущен непрерывный спавн");
+                break;
+                
+            case SpawnMode.Wave:
+                spawnCoroutine = StartCoroutine(WaveSpawnCoroutine());
+                Debug.Log($"EnemySpawner [{name}]: Запущен волновой спавн");
+                break;
+                
+            case SpawnMode.Manual:
+                Debug.Log($"EnemySpawner [{name}]: Ручной режим - используйте SpawnWave()");
+                break;
+        }
+        
+        Debug.Log($"EnemySpawner [{name}]: Респавн врагов завершен");
     }
     
     // ========== ВИЗУАЛИЗАЦИЯ ==========

@@ -47,6 +47,18 @@ public class GameBootstrap : MonoBehaviour
     private bool isInitialized = false;
     private SaveData<PlayerPositionData> playerPositionSave;
     
+    void Awake()
+    {
+        // Подписываемся на событие регенерации мира
+        GlobalEvents.RegenerateWorld.AddListener(RegenerateWorld);
+    }
+    
+    void OnDestroy()
+    {
+        // Отписываемся от события
+        GlobalEvents.RegenerateWorld.RemoveListener(RegenerateWorld);
+    }
+    
     void Start()
     {
         // Инициализируем систему сохранения позиции
@@ -190,9 +202,19 @@ public class GameBootstrap : MonoBehaviour
         }
         else
         {
-            // Получаем безопасную позицию спавна из VoxelWorld
-            spawnPosition = voxelWorld.GetSafeSpawnPosition();
+            // Получаем точку спавна из VoxelWorld (вычисленную при генерации)
+            spawnPosition = voxelWorld.PlayerSpawnPoint;
             
+            // Если точка не установлена, используем резервный метод
+            if (spawnPosition == Vector3.zero)
+            {
+                spawnPosition = voxelWorld.GetSafeSpawnPosition();
+                Debug.LogWarning("GameBootstrap: PlayerSpawnPoint не установлена, используем резервную позицию");
+            }
+            else
+            {
+                Debug.Log($"GameBootstrap: Используем точку спавна из мира: {spawnPosition}");
+            }
         }
         
         // Создаем игрока
@@ -607,6 +629,108 @@ public class GameBootstrap : MonoBehaviour
             playerPositionSave.Delete();
             
         }
+    }
+    
+    /// <summary>
+    /// Регенерация мира (вызывается из UI или программно)
+    /// </summary>
+    public void RegenerateWorld()
+    {
+        if (!isInitialized)
+        {
+            Debug.LogWarning("GameBootstrap: Игра еще не инициализирована, регенерация невозможна");
+            return;
+        }
+        
+        Debug.Log("GameBootstrap: Запуск регенерации мира...");
+        StartCoroutine(RegenerateWorldCoroutine());
+    }
+    
+    /// <summary>
+    /// Корутина регенерации мира
+    /// </summary>
+    IEnumerator RegenerateWorldCoroutine()
+    {
+        Debug.Log("=== НАЧАЛО РЕГЕНЕРАЦИИ МИРА ===");
+        
+        isInitialized = false; // Помечаем что идет регенерация
+        
+        // 1. Деспавн всех врагов через спавнеры
+        Debug.Log("GameBootstrap: Деспавн врагов...");
+        if (enemySpawners != null && enemySpawners.Length > 0)
+        {
+            foreach (var spawner in enemySpawners)
+            {
+                if (spawner != null)
+                {
+                    spawner.DespawnAllEnemies();
+                }
+            }
+            Debug.Log($"GameBootstrap: Деспавнено врагов через {enemySpawners.Length} спавнеров");
+        }
+        // Даём время Unity на уничтожение объектов врагов
+        yield return new WaitForSeconds(0.2f);
+        
+        // 2. Уничтожаем игрока
+        if (spawnedPlayer != null)
+        {
+            Debug.Log("GameBootstrap: Уничтожение старого игрока...");
+            Destroy(spawnedPlayer);
+            spawnedPlayer = null;
+        }
+        // Даём время Unity на уничтожение объекта игрока
+        yield return new WaitForSeconds(0.1f);
+        
+        // 3. Удаляем сохранение позиции игрока
+        if (savePlayerPosition && playerPositionSave != null)
+        {
+            playerPositionSave.Delete();
+            Debug.Log("GameBootstrap: Сохранение позиции игрока удалено");
+        }
+        yield return null;
+        
+        // 4. Запрашиваем регенерацию мира у VoxelWorld
+        Debug.Log("GameBootstrap: Запрос регенерации у VoxelWorld...");
+        if (voxelWorld != null)
+        {
+            yield return StartCoroutine(voxelWorld.RegenerateWorldCoroutine());
+            Debug.Log("GameBootstrap: VoxelWorld завершил регенерацию");
+        }
+        else
+        {
+            Debug.LogError("GameBootstrap: VoxelWorld не найден!");
+            yield break;
+        }
+        yield return null;
+        
+        // 5. Ждем готовности мира (на всякий случай)
+        if (waitForWorldReady)
+        {
+            float startTime = Time.time;
+            while (!voxelWorld.IsWorldReady)
+            {
+                if (Time.time - startTime > maxWaitTime)
+                {
+                    Debug.LogError($"GameBootstrap: Превышено время ожидания мира ({maxWaitTime} сек)!");
+                    yield break;
+                }
+                yield return null;
+            }
+        }
+        
+        // 6-8. Используем ту же логику что и при первом запуске
+        yield return StartCoroutine(SpawnPlayer());
+        
+        if (initializeCamera)
+        {
+            yield return StartCoroutine(InitializeCamera());
+        }
+        
+        InitializeEnemySpawners();
+        
+        isInitialized = true;
+        
+        Debug.Log("=== РЕГЕНЕРАЦИЯ МИРА ЗАВЕРШЕНА ===");
     }
     
     /// <summary>

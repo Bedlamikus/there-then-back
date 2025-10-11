@@ -46,6 +46,7 @@ public class CameraController : MonoBehaviour
     // Переменные для новой логики коллизий
     private bool isMovingTowardsPlayer = false;     // Флаг движения к игроку
     private bool isReturningToMaxDistance = false;  // Флаг возврата к максимальному расстоянию
+    private bool hasObstacleBehind = false;         // Флаг наличия препятствия за камерой
 
     void Start()
     {
@@ -92,6 +93,7 @@ public class CameraController : MonoBehaviour
             currentCameraDistance = maxCameraDistance;
             isMovingTowardsPlayer = false;
             isReturningToMaxDistance = false;
+            hasObstacleBehind = false;
 
             // Устанавливаем начальную позицию камеры
             if (virtualCamera != null)
@@ -190,7 +192,40 @@ public class CameraController : MonoBehaviour
         }
         else
         {
-            // Нет коллизии
+            // Нет коллизии перед камерой
+            
+            // Если камера остановилась из-за препятствия за ней, проверяем, не исчезло ли оно
+            if (hasObstacleBehind && !isMovingTowardsPlayer && !isReturningToMaxDistance)
+            {
+                Vector3 currentCameraPos = virtualCamera != null ? virtualCamera.transform.position : desiredPosition;
+                
+                // Проверяем путь от игрока к желаемой позиции (дальше текущей)
+                if (currentCameraDistance < maxCameraDistance)
+                {
+                    float testDistance = currentCameraDistance + 1f; // Пробуем на 1 единицу дальше
+                    testDistance = Mathf.Min(testDistance, maxCameraDistance);
+                    
+                    // Временно увеличиваем расстояние для проверки
+                    float savedDistance = currentCameraDistance;
+                    currentCameraDistance = testDistance;
+                    Vector3 testPosition = GetDesiredCameraPosition();
+                    currentCameraDistance = savedDistance;
+                    
+                    Vector3 testDirection = (testPosition - lookTarget).normalized;
+                    float testDistanceFromPlayer = Vector3.Distance(lookTarget, testPosition);
+                    
+                    RaycastHit testHit;
+                    bool hasTestCollision = Physics.Raycast(lookTarget, testDirection, out testHit, testDistanceFromPlayer, effectiveCollisionMask);
+                    
+                    if (!hasTestCollision)
+                    {
+                        // Путь свободен - можем возобновить возврат
+                        hasObstacleBehind = false;
+                        isReturningToMaxDistance = true;
+                    }
+                }
+            }
+            
             if (isMovingTowardsPlayer)
             {
                 // Мы приближались к игроку, теперь нужно проверить гистерезис
@@ -210,6 +245,7 @@ public class CameraController : MonoBehaviour
                     // Гистерезис прошел - начинаем возврат к максимальному расстоянию
                     isMovingTowardsPlayer = false;
                     isReturningToMaxDistance = true;
+                    hasObstacleBehind = false;
                 }
             }
 
@@ -219,7 +255,7 @@ public class CameraController : MonoBehaviour
                 float newDistance = currentCameraDistance + cameraReturnSpeed * Time.deltaTime;
                 currentCameraDistance = Mathf.Min(newDistance, maxCameraDistance);
 
-                // Проверяем, не столкнулись ли мы снова при возврате
+                // Проверяем, не столкнулись ли мы снова при возврате (проверяем вперед от игрока к новой позиции)
                 Vector3 returnPosition = GetDesiredCameraPosition();
                 Vector3 returnDirection = (returnPosition - lookTarget).normalized;
                 float returnDistance = Vector3.Distance(lookTarget, returnPosition);
@@ -229,14 +265,36 @@ public class CameraController : MonoBehaviour
 
                 if (hasReturnCollision)
                 {
-                    // Снова столкнулись - начинаем движение к игроку
+                    // Столкнулись при возврате
+                    float hitDistance = returnHit.distance;
+                    
+                    // Если столкновение очень близко к камере (меньше 0.5 единиц)
+                    if (hitDistance < Vector3.Distance(lookTarget, virtualCamera.transform.position) + 0.5f)
+                    {
+                        // Препятствие прямо за камерой - останавливаемся без дергания
+                        isReturningToMaxDistance = false;
+                        hasObstacleBehind = true;
+                        // Сбрасываем расстояние к текущему фактическому
+                        currentCameraDistance = Vector3.Distance(lookTarget, virtualCamera.transform.position);
+                    }
+                    else
+                    {
+                        // Препятствие дальше - продолжаем движение к игроку
                     isReturningToMaxDistance = false;
                     isMovingTowardsPlayer = true;
+                        hasObstacleBehind = false;
+                    }
                 }
                 else if (currentCameraDistance >= maxCameraDistance)
                 {
                     // Успешно вернулись к максимальному расстоянию
                     isReturningToMaxDistance = false;
+                    hasObstacleBehind = false;
+                }
+                else
+                {
+                    // Нет коллизии, продолжаем возврат
+                    hasObstacleBehind = false;
                 }
             }
         }
@@ -253,6 +311,7 @@ public class CameraController : MonoBehaviour
         currentCameraDistance = maxCameraDistance;
         isMovingTowardsPlayer = false;
         isReturningToMaxDistance = false;
+        hasObstacleBehind = false;
         InitializeCameraPosition();
     }
 
@@ -393,6 +452,16 @@ public class CameraController : MonoBehaviour
                     Gizmos.color = Color.red;
                     Gizmos.DrawWireSphere(hysteresisPoint, 0.3f);
                     Gizmos.DrawLine(virtualCamera.transform.position, hysteresisPoint);
+                }
+                
+                // Визуализация препятствия за камерой
+                if (hasObstacleBehind)
+                {
+                    Vector3 directionFromCamera = (gizmoLookTarget - virtualCamera.transform.position).normalized;
+                    Vector3 behindPoint = virtualCamera.transform.position - directionFromCamera * 1f;
+                    Gizmos.color = new Color(1f, 0.5f, 0f); // Оранжевый
+                    Gizmos.DrawWireSphere(behindPoint, 0.4f);
+                    Gizmos.DrawLine(virtualCamera.transform.position, behindPoint);
                 }
             }
 
