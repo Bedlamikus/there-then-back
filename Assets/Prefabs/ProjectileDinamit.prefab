@@ -126,6 +126,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 19ff2b27b50470b4bacfcbbba6fe7f0e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  force: 25
   radius: 6
   maxDamage: 10
   destroyOnHit: 1

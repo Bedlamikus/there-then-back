@@ -85,6 +85,9 @@ public class PlayerWeaponController : MonoBehaviour
         
         // Инициализируем магазины для всех снарядов
         InitializeMagazines();
+        
+        // Уведомляем UI о текущем выбранном снаряде с небольшой задержкой
+        StartCoroutine(NotifyCurrentProjectileSelectedDelayed());
     }
     
     /// <summary>
@@ -106,6 +109,23 @@ public class PlayerWeaponController : MonoBehaviour
                 // Создаем магазин для этого снаряда
                 magazines[projectilePrefab] = new WeaponMagazine(ammoData);
             }
+        }
+    }
+    
+    /// <summary>
+    /// Уведомить UI о текущем выбранном снаряде с задержкой
+    /// </summary>
+    System.Collections.IEnumerator NotifyCurrentProjectileSelectedDelayed()
+    {
+        // Ждем один кадр, чтобы UI успел инициализироваться
+        yield return new WaitForEndOfFrame();
+        
+        GameObject currentProjectile = GetCurrentProjectile();
+        if (currentProjectile != null)
+        {
+            // Отправляем событие выбора текущего снаряда
+            GlobalEvents.ProjectileSelected.Invoke(currentProjectile);
+            Debug.Log($"[Player Weapon] Уведомление UI о текущем снаряде: {currentProjectile.name}");
         }
     }
     

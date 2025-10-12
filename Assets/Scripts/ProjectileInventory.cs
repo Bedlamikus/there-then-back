@@ -10,7 +10,7 @@ public class ProjectileInventory : MonoBehaviour
     public float iconSpacing = 10f;                 // Расстояние между иконками
     
     [Header("Test Settings")]
-    public bool autoSelectFirst = true;             // Автоматически выбрать первый снаряд
+    public bool autoSelectFirst = false;            // Отключено - теперь PlayerWeaponController сам уведомляет UI
     public float autoSelectDelay = 1f;              // Задержка автовыбора (секунды)
     
     [Header("Projectile Prefabs")]
@@ -22,13 +22,41 @@ public class ProjectileInventory : MonoBehaviour
     
     void Start()
     {
+        // Подписываемся на событие выбора снаряда
+        GlobalEvents.ProjectileSelected.AddListener(OnProjectileSelected);
+        
         // Создаем иконки для всех снарядов
         CreateProjectileIcons();
         
-        // Автоматически выбираем первый снаряд для тестирования
+        // Автоматически выбираем первый снаряд для тестирования (если включено)
         if (autoSelectFirst && projectilePrefabs.Length > 0)
         {
             StartCoroutine(AutoSelectFirstProjectile());
+        }
+    }
+    
+    void OnDestroy()
+    {
+        // Отписываемся от события
+        GlobalEvents.ProjectileSelected.RemoveListener(OnProjectileSelected);
+    }
+    
+    /// <summary>
+    /// Обработчик события выбора снаряда - синхронизирует UI
+    /// </summary>
+    void OnProjectileSelected(GameObject selectedProjectile)
+    {
+        if (selectedProjectile == null) return;
+        
+        // Находим иконку для этого префаба
+        foreach (ProjectileIcon icon in projectileIconComponents)
+        {
+            if (icon != null && icon.GetProjectilePrefab() == selectedProjectile)
+            {
+                SelectProjectileIcon(icon);
+                Debug.Log($"ProjectileInventory: UI синхронизирован с выбранным снарядом: {selectedProjectile.name}");
+                return;
+            }
         }
     }
     

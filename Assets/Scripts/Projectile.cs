@@ -43,6 +43,10 @@ public class Projectile : MonoBehaviour
     
     // Время жизни
     private float spawnTime;                       // Время создания снаряда
+    
+    // Защита от мгновенного столкновения с игроком
+    private bool canCollideWithPlayer = false;     // Флаг разрешения столкновений с игроком
+    private float collisionEnableDelay = 0.1f;     // Задержка включения столкновений (секунды)
 
     protected virtual void Start()
     {
@@ -82,6 +86,18 @@ public class Projectile : MonoBehaviour
         {
             lifetimeCoroutine = StartCoroutine(LifetimeCoroutine());
         }
+        
+        // Запускаем корутину для разрешения столкновений с игроком через задержку
+        StartCoroutine(EnablePlayerCollisionAfterDelay());
+    }
+    
+    /// <summary>
+    /// Включает столкновения с игроком через небольшую задержку
+    /// </summary>
+    protected virtual IEnumerator EnablePlayerCollisionAfterDelay()
+    {
+        yield return new WaitForSeconds(collisionEnableDelay);
+        canCollideWithPlayer = true;
     }
 
     protected virtual void OnCollisionEnter(Collision c)
@@ -91,6 +107,13 @@ public class Projectile : MonoBehaviour
         if (otherProjectile != null)
         {
             return; // Игнорируем столкновения между снарядами
+        }
+        
+        // Проверяем, столкнулись ли с игроком
+        PlayerController player = c.gameObject.GetComponent<PlayerController>();
+        if (player != null && !canCollideWithPlayer)
+        {
+            return; // Игнорируем столкновения с игроком в первые 0.1 секунды
         }
         
         // Проверяем, столкнулись ли с VoxelChunk16
@@ -115,6 +138,13 @@ public class Projectile : MonoBehaviour
         if (otherProjectile != null)
         {
             return; // Игнорируем триггеры между снарядами
+        }
+        
+        // Проверяем, попали ли в игрока
+        PlayerController player = other.GetComponent<PlayerController>();
+        if (player != null && !canCollideWithPlayer)
+        {
+            return; // Игнорируем триггеры с игроком в первые 0.1 секунды
         }
         
         // Проверяем, попали ли в VoxelChunk16

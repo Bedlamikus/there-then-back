@@ -726,7 +726,23 @@ public class GameBootstrap : MonoBehaviour
             yield return StartCoroutine(InitializeCamera());
         }
         
-        InitializeEnemySpawners();
+        // Респавн врагов (не используем InitializeEnemySpawners, т.к. спавнеры уже инициализированы)
+        Debug.Log("GameBootstrap: Респавн врагов...");
+        if (enemySpawners != null && enemySpawners.Length > 0)
+        {
+            // Обновляем цель игрока для всех спавнеров
+            Transform playerTransform = spawnedPlayer != null ? spawnedPlayer.transform : null;
+            
+            foreach (var spawner in enemySpawners)
+            {
+                if (spawner != null && playerTransform != null)
+                {
+                    spawner.SetPlayerTarget(playerTransform);
+                    spawner.RespawnAllEnemies();
+                }
+            }
+            Debug.Log($"GameBootstrap: Враги респавнены через {enemySpawners.Length} спавнеров");
+        }
         
         isInitialized = true;
         

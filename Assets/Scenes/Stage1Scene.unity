@@ -470,7 +470,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 0}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -1376,11 +1376,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enemyPrefab: {fileID: 5506370006722563975, guid: 90a172b178a92fd4ba3a7af273a575a7, type: 3}
-  spawnMode: 0
+  spawnMode: 1
   enemiesPerSpawn: 10
   maxEnemiesAlive: 10
-  areaMode: 0
-  spawnRadius: 30
+  areaMode: 2
+  spawnRadius: 40
   spawnPoints: []
   spawnInterval: 30
   initialDelay: 3

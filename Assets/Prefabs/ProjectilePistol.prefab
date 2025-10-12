@@ -147,8 +147,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 631b3a13a8f1b9640affa3a4f67fa73f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  radius: 0.5
-  maxDamage: 10
+  force: 6
+  radius: 1
+  maxDamage: 20
   destroyOnHit: 1
   explosionDelay: 3
   blinkInterval: 0.2
@@ -164,11 +165,11 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   chainReactionDelay: 0.1
-  maxLifetime: 10
+  maxLifetime: 7
   destroyOnLifetime: 1
-  speed: 20
+  speed: 30
   ignoreGravity: 1
-  directHitRadius: 0.2
+  directHitRadius: 1
 --- !u!114 &4456334513754225420
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -181,8 +182,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bcaac7b371a940842bf0912f4ebaf70c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  magazineSize: 20
-  shootCooldown: 0.3333333
-  reloadTimePerShot: 1.2
+  magazineSize: 8
+  shootCooldown: 0.1
+  reloadTimePerShot: 0.8
   projectileName: "\u0421\u043D\u0430\u0440\u044F\u0434"
   projectileIcon: {fileID: 0}
