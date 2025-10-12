@@ -1,10 +1,26 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 public class VoxelWorldGenerator : MonoBehaviour
 {
     [Header("Chunk grid")]
     public int chunksX = 5;
     public int chunksZ = 5;
+    
+    [Header("Trees")]
+    [Tooltip("Генерировать деревья")]
+    public bool generateTrees = true;
+    
+    [Tooltip("Конфигурация деревьев")]
+    public TreeConfig treeConfig;
+    
+    [Tooltip("Плотность деревьев (деревьев на чанк)")]
+    [Range(0, 10)]
+    public int treesPerChunk = 2;
+    
+    [Tooltip("Минимальное расстояние между деревьями")]
+    [Range(5, 20)]
+    public int minTreeDistance = 8;
 
     [Header("Noise (height) - Base Values")]
     [Tooltip("Базовый seed - при регенерации будет случайный")]
@@ -174,8 +190,113 @@ public class VoxelWorldGenerator : MonoBehaviour
         // Пещеры
         if (enableCaves)
             CarveCavesInChunk(data, cx, cz);
+        
+        // Деревья генерируются после создания чанка через VoxelWorld
+        // (требуют доступа к соседним чанкам)
 
         return data;
+    }
+    
+    /// <summary>
+    /// Генерация деревьев для всего мира (вызывается после создания всех чанков)
+    /// </summary>
+    public void GenerateTreesInWorld(VoxelWorld world)
+    {
+        if (!generateTrees || treeConfig == null || world == null)
+        {
+            Debug.Log("VoxelWorldGenerator: Генерация деревьев отключена или конфиг не установлен");
+            return;
+        }
+        
+        Debug.Log("VoxelWorldGenerator: Начинаем генерацию деревьев...");
+        
+        TreeGenerator treeGen = new TreeGenerator(treeConfig);
+        List<Vector3Int> treePositions = new List<Vector3Int>();
+        int treesGenerated = 0;
+        
+        // Создаем генератор случайных чисел для деревьев
+        System.Random treeRandom = new System.Random(currentSeed ^ 123456);
+        
+        // Проходим по всем чанкам
+        for (int cz = 0; cz < chunksZ; cz++)
+        {
+            for (int cx = 0; cx < chunksX; cx++)
+            {
+                // Генерируем несколько деревьев в чанке
+                for (int t = 0; t < treesPerChunk; t++)
+                {
+                    // Случайная позиция в чанке
+                    int localX = treeRandom.Next(2, VoxelChunk16.WIDTH - 2);
+                    int localZ = treeRandom.Next(2, VoxelChunk16.DEPTH - 2);
+                    int worldX = cx * VoxelChunk16.WIDTH + localX;
+                    int worldZ = cz * VoxelChunk16.DEPTH + localZ;
+                    
+                    // Находим поверхность (ищем сверху вниз)
+                    int surfaceY = FindSurfaceY(world, worldX, worldZ);
+                    if (surfaceY <= 0)
+                        continue; // Поверхность не найдена
+                    
+                    Vector3Int treePos = new Vector3Int(worldX, surfaceY + 1, worldZ);
+                    
+                    // Проверяем минимальное расстояние до других деревьев
+                    if (!IsValidTreePosition(treePos, treePositions))
+                        continue;
+                    
+                    // Проверяем что можно разместить дерево
+                    if (!treeGen.CanPlaceTree(treePos, world))
+                        continue;
+                    
+                    // Генерируем дерево
+                    int treeSeed = currentSeed ^ (worldX * 73856093) ^ (worldZ * 19349663) ^ t;
+                    List<(Vector3Int pos, int type)> treeBlocks = treeGen.GenerateTree(treePos, treeSeed);
+                    
+                    // Размещаем дерево в мире
+                    if (world.PlaceTree(treePos, treeBlocks))
+                    {
+                        treePositions.Add(treePos);
+                        treesGenerated++;
+                    }
+                }
+            }
+        }
+        
+        Debug.Log($"VoxelWorldGenerator: Сгенерировано {treesGenerated} деревьев");
+    }
+    
+    /// <summary>
+    /// Находит Y координату поверхности
+    /// </summary>
+    int FindSurfaceY(VoxelWorld world, int worldX, int worldZ)
+    {
+        // Ищем сверху вниз
+        for (int y = VoxelChunk16.HEIGHT - 1; y >= 0; y--)
+        {
+            if (world.HasBlockAt(worldX, y, worldZ))
+            {
+                // Нашли твердый блок - это поверхность
+                return y;
+            }
+        }
+        return -1;
+    }
+    
+    /// <summary>
+    /// Проверяет, что позиция для дерева валидна (минимальное расстояние до других)
+    /// </summary>
+    bool IsValidTreePosition(Vector3Int position, List<Vector3Int> existingTrees)
+    {
+        foreach (Vector3Int existingTree in existingTrees)
+        {
+            float distance = Vector2.Distance(
+                new Vector2(position.x, position.z),
+                new Vector2(existingTree.x, existingTree.z)
+            );
+            
+            if (distance < minTreeDistance)
+                return false;
+        }
+        
+        return true;
     }
 
     // ===== Руды =====

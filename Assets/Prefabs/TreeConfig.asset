@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 944ac3b2ebf953140bc84db8c034cc72, type: 3}
+  m_Name: TreeConfig
+  m_EditorClassIdentifier: 
+  minTrunkHeight: 6
+  maxTrunkHeight: 10
+  trunkRadius: 1
+  trunkTaper: 0.2
+  minBranches: 3
+  maxBranches: 6
+  minBranchLength: 2
+  maxBranchLength: 4
+  branchStartHeight: 0.5
+  branchAngle: 35
+  subBranchProbability: 0.3
+  crownRadius: 4
+  crownHeight: 6
+  crownElongation: 0.3
+  crownDensity: 0.7
+  leavesOnBranches: 1
+  branchCrownRadius: 2
+  noiseScale: 5
+  noiseThreshold: 0.3
+  useNoise: 1
+  woodBlockType: 3
+  leavesBlockType: 4
+  minClearanceAbove: 15
+  requireSoilBelow: 1
+  validSoilTypes: 0000000001000000

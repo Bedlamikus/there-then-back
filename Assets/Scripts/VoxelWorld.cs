@@ -20,6 +20,8 @@ public class VoxelWorld : MonoBehaviour
     const int GRASS = 0;
     const int DIRT = 1;
     const int STONE = 2;
+    const int WOOD = 3;      // Дерево (ствол и ветки)
+    const int LEAVES = 4;    // Листва
     const int COAL = 6;
     const int GOLD = 7;
 
@@ -154,6 +156,12 @@ public class VoxelWorld : MonoBehaviour
         }
         
         Debug.Log("VoxelWorld: Постепенная генерация завершена");
+        
+        // Генерируем деревья после создания всех чанков
+        if (generator != null)
+        {
+            generator.GenerateTreesInWorld(this);
+        }
     }
     
     /// <summary>
@@ -255,6 +263,12 @@ public class VoxelWorld : MonoBehaviour
                 CreateChunk(cx, cz, null, null);
             }
         
+        // Генерируем деревья после создания всех чанков
+        if (generator != null)
+        {
+            generator.GenerateTreesInWorld(this);
+        }
+        
         // Вычисляем точку спавна после генерации
         CalculatePlayerSpawnPoint();
         Debug.Log($"VoxelWorld: Мгновенная генерация завершена. Точка спавна: {playerSpawnPoint}");
@@ -286,21 +300,25 @@ public class VoxelWorld : MonoBehaviour
         builder.hpData = hp;
         builder.useDamageTiles = true;
         builder.typeMaxHpLut = new int[256];
-        builder.typeMaxHpLut[0] = 5;
-        builder.typeMaxHpLut[1] = 5;
-        builder.typeMaxHpLut[2] = 8;
-        builder.typeMaxHpLut[6] = 12;
-        builder.typeMaxHpLut[7] = 12;
+        builder.typeMaxHpLut[0] = 5;   // Трава
+        builder.typeMaxHpLut[1] = 5;   // Земля
+        builder.typeMaxHpLut[2] = 8;   // Камень
+        builder.typeMaxHpLut[3] = 6;   // Дерево (ствол)
+        builder.typeMaxHpLut[4] = 2;   // Листва (легко ломается)
+        builder.typeMaxHpLut[6] = 12;  // Уголь
+        builder.typeMaxHpLut[7] = 12;  // Золото
         
         // Настройка типов
         builder.typeToTileIndex = new int[256];
-        builder.typeToTileIndex[0] = 0;
-        builder.typeToTileIndex[1] = 1;
-        builder.typeToTileIndex[2] = 2;
-        builder.typeToTileIndex[6] = 6;
-        builder.typeToTileIndex[7] = 7;
+        builder.typeToTileIndex[0] = 0;  // Трава
+        builder.typeToTileIndex[1] = 1;  // Земля
+        builder.typeToTileIndex[2] = 2;  // Камень
+        builder.typeToTileIndex[3] = 3;  // Дерево
+        builder.typeToTileIndex[4] = 4;  // Листва
+        builder.typeToTileIndex[6] = 6;  // Уголь
+        builder.typeToTileIndex[7] = 7;  // Золото
         for (int t = 0; t < builder.typeToTileIndex.Length; t++)
-            if (t != 0 && t != 1 && t != 2 && t != 6 && t != 7)
+            if (t != 0 && t != 1 && t != 2 && t != 3 && t != 4 && t != 6 && t != 7)
                 builder.typeToTileIndex[t] = 2;
         
         // Инициализируем автосохранение
@@ -342,6 +360,8 @@ public class VoxelWorld : MonoBehaviour
             GRASS => 5,
             DIRT => 5,
             STONE => 8,
+            WOOD => 6,
+            LEAVES => 2,
             COAL => 12,
             GOLD => 12,
             _ => 6
@@ -552,11 +572,72 @@ public class VoxelWorld : MonoBehaviour
         return blockType != AIR; // Возвращаем true если блок не воздух
     }
     
+    // === Публичный метод для получения типа блока ===
+    public int GetBlockType(int wx, int wy, int wz)
+    {
+        if (wx < 0 || wz < 0 || wy < 0 || wy >= VoxelChunk16.HEIGHT) return AIR;
+        if (wx >= chunksX * VoxelChunk16.WIDTH || wz >= chunksZ * VoxelChunk16.DEPTH) return AIR;
+
+        int cxi = wx / VoxelChunk16.WIDTH;
+        int czi = wz / VoxelChunk16.DEPTH;
+        int lx = wx % VoxelChunk16.WIDTH;
+        int lz = wz % VoxelChunk16.DEPTH;
+
+        if (!_chunks.TryGetValue((cxi, czi), out var entry)) return AIR;
+        
+        return entry.data[lx, wy, lz];
+    }
+    
     // === Публичный метод для перестройки чанка ===
     public void RebuildChunk(int cx, int cz)
     {
         if (!_chunks.TryGetValue((cx, cz), out var entry)) return;
         entry.builder.Build(entry.data);
+    }
+    
+    // === Метод для размещения дерева ===
+    public bool PlaceTree(Vector3Int position, List<(Vector3Int pos, int type)> treeBlocks)
+    {
+        if (treeBlocks == null || treeBlocks.Count == 0)
+            return false;
+        
+        HashSet<(int cx, int cz)> affectedChunks = new HashSet<(int, int)>();
+        
+        // Размещаем все блоки дерева
+        foreach (var block in treeBlocks)
+        {
+            int wx = block.pos.x;
+            int wy = block.pos.y;
+            int wz = block.pos.z;
+            int blockType = block.type;
+            
+            // Проверка границ
+            if (wx < 0 || wz < 0 || wy < 0 || wy >= VoxelChunk16.HEIGHT) continue;
+            if (wx >= chunksX * VoxelChunk16.WIDTH || wz >= chunksZ * VoxelChunk16.DEPTH) continue;
+            
+            int cxi = wx / VoxelChunk16.WIDTH;
+            int czi = wz / VoxelChunk16.DEPTH;
+            int lx = wx % VoxelChunk16.WIDTH;
+            int lz = wz % VoxelChunk16.DEPTH;
+            
+            if (!_chunks.TryGetValue((cxi, czi), out var entry)) continue;
+            
+            // Ставим блок только в воздух
+            if (entry.data[lx, wy, lz] == AIR)
+            {
+                entry.data[lx, wy, lz] = blockType;
+                entry.hp[lx, wy, lz] = (short)GetMaxHP(blockType);
+                affectedChunks.Add((cxi, czi));
+            }
+        }
+        
+        // Перестраиваем затронутые чанки
+        foreach (var chunkKey in affectedChunks)
+        {
+            RebuildChunk(chunkKey.cx, chunkKey.cz);
+        }
+        
+        return affectedChunks.Count > 0;
     }
     
     // ========== УТИЛИТЫ ДЛЯ СПАВНА ==========

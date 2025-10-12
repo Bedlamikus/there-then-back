@@ -1666,6 +1666,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   chunksX: 5
   chunksZ: 5
+  generateTrees: 1
+  treeConfig: {fileID: 11400000, guid: c7accb5f22f98324bbc7602092d5b790, type: 2}
+  treesPerChunk: 2
+  minTreeDistance: 5
   baseSeed: 12345
   baseHeightScale: 96
   octaves: 4
