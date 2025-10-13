@@ -153,6 +153,12 @@ public class AutoSpawnService
     /// </summary>
     public void TickSpawnable(ISpawnable spawnable, float deltaTime)
     {
+        // Проверяем что объект не уничтожен
+        if (spawnable == null || spawnable.GetGameObject() == null || spawnable.GetTransform() == null)
+        {
+            return; // Объект уничтожен, пропускаем
+        }
+        
         string id = spawnable.GetSpawnableID();
         
         if (!spawnables.TryGetValue(id, out var data))
@@ -211,6 +217,12 @@ public class AutoSpawnService
     
     private void CheckForPositionSave(SpawnableData data)
     {
+        // Проверяем что объект не уничтожен
+        if (data.spawnable == null || data.spawnable.GetGameObject() == null)
+        {
+            return;
+        }
+        
         float currentTime = Time.time;
         
         // Если прошло достаточно времени с последнего сохранения
@@ -227,6 +239,12 @@ public class AutoSpawnService
     
     private void SavePosition(SpawnableData data)
     {
+        // Дополнительная проверка перед доступом к Transform
+        if (data.spawnable == null || data.spawnable.GetTransform() == null)
+        {
+            return;
+        }
+        
         Vector3 currentPosition = data.spawnable.GetTransform().position;
         data.lastSavedPosition = currentPosition;
         data.hasValidSavePosition = true;
@@ -618,6 +636,15 @@ public class AutoSpawnService
     public void SetSaveInterval(float interval)
     {
         saveInterval = Mathf.Max(0.1f, interval);
+    }
+    
+    /// <summary>
+    /// Сбрасывает флаг перемещения игрока на точку спавна
+    /// </summary>
+    public void ResetPlayerSpawnFlag()
+    {
+        hasMovedPlayerToSpawn = false;
+        Debug.Log("[AutoSpawn] Флаг перемещения игрока сброшен");
     }
     
     /// <summary>

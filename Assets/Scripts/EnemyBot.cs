@@ -28,6 +28,10 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     // Цель
     private Transform target;
     private bool isInitialized = false;
+    
+    // Система кулинга
+    private float nextCullingCheckTime = 0f;
+    private PlayerController playerController; // Для получения viewDistance
 
     public void Init(Transform playerTarget)
     {
@@ -46,6 +50,15 @@ public class EnemyBot : MonoBehaviour, ISpawnable
             aiStateMachine.SetTarget(target);
         }
         
+        // Получаем PlayerController для кулинга
+        if (playerTarget != null)
+        {
+            playerController = playerTarget.GetComponent<PlayerController>();
+        }
+        
+        // Инициализируем кулинг со случайной задержкой
+        nextCullingCheckTime = Time.time + Random.Range(5f, 10f);
+        
         Debug.Log($"[Bot] Бот {botID} создан в позиции {transform.position}");
         
         RegisterWithAutoSpawn();
@@ -56,12 +69,45 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     {
         UpdateServices();
         HandleMovement();
+        
+        // Проверка кулинга раз в ~10 секунд
+        if (Time.time >= nextCullingCheckTime)
+        {
+            CheckCulling();
+            nextCullingCheckTime = Time.time + Random.Range(8f, 12f);
+        }
     }
     
     void OnDestroy()
     {
         Debug.Log($"[Bot] Бот {botID} уничтожен");
         AutoSpawnService.Instance?.UnregisterSpawnable(this);
+    }
+    
+    /// <summary>
+    /// Проверка дистанции до игрока и деспавн если слишком далеко
+    /// </summary>
+    void CheckCulling()
+    {
+        if (target == null || playerController == null)
+            return;
+        
+        // Вычисляем расстояние только по XZ (горизонтали)
+        float distanceXZ = Vector2.Distance(
+            new Vector2(transform.position.x, transform.position.z),
+            new Vector2(target.position.x, target.position.z)
+        );
+        
+        // Враги деспавнятся на расстоянии = viewDistance
+        // Чанки исчезают на viewDistance * 1.5
+        // Таким образом враг всегда деспавнится раньше чем под ним исчезнет чанк
+        float despawnDistance = playerController.viewDistance;
+        
+        if (distanceXZ > despawnDistance)
+        {
+            Debug.Log($"[Bot] Бот {botID} слишком далеко от игрока ({distanceXZ:F1}m > {despawnDistance:F1}m), деспавн");
+            Destroy(gameObject);
+        }
     }
     
     private void InitializeBot()

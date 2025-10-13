@@ -17,4 +17,5 @@ public class GlobalEvents
     public static UnityEvent<Vector3> CameraAimPoint = new();  // Точка прицеливания в центре экрана (мировые координаты)
     public static UnityEvent RegenerateWorld = new();  // Событие перегенерации мира
     public static UnityEvent WorldReady = new();  // Событие готовности мира (после генерации/загрузки)
+    public static UnityEvent<float> WorldGenerationProgress = new();  // Прогресс генерации мира (0.0 - 1.0)
 }

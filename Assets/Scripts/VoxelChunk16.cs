@@ -32,6 +32,13 @@ public class VoxelChunk16 : MonoBehaviour
     private const float SAVE_DELAY = 5f;       // Задержка перед сохранением (5 секунд после изменения)
     public int chunkX { get; private set; }
     public int chunkZ { get; private set; }
+    
+    // ===== система кулинга =====
+    private Transform playerTransform;         // Ссылка на игрока
+    private PlayerController playerController; // Для получения viewDistance
+    private float nextCullingCheckTime = 0f;   // Время следующей проверки
+    private bool isVisualizationActive = true; // Текущее состояние визуализации
+    private MeshRenderer meshRenderer;         // Для включения/выключения
 
     // подготовленные UV-координаты (кеш на каждый tileIndex)
     static readonly Dictionary<int, Vector2[]> uvCache = new();
@@ -49,6 +56,73 @@ public class VoxelChunk16 : MonoBehaviour
         // Создаем SaveData с уникальным именем чанка
         string chunkName = $"Chunk_{cx}_{cz}";
         saveData = new SaveData<SingleChunkData>(chunkName);
+        
+        // Кешируем MeshRenderer
+        meshRenderer = GetComponent<MeshRenderer>();
+    }
+    
+    /// <summary>
+    /// Установить игрока для системы кулинга
+    /// </summary>
+    public void SetPlayer(Transform player)
+    {
+        if (player != null)
+        {
+            playerTransform = player;
+            playerController = player.GetComponent<PlayerController>();
+            
+            // Первая проверка дистанции со случайной задержкой
+            nextCullingCheckTime = Time.time + Random.Range(0f, 2f);
+        }
+    }
+    
+    /// <summary>
+    /// Проверка дистанции и управление визуализацией
+    /// </summary>
+    void CheckCulling()
+    {
+        if (playerTransform == null || playerController == null)
+            return;
+        
+        // Вычисляем расстояние только по XZ (горизонтали)
+        Vector3 chunkCenter = transform.position + new Vector3(WIDTH * 0.5f, 0, DEPTH * 0.5f);
+        Vector3 playerPos = playerTransform.position;
+        
+        float distanceXZ = Vector2.Distance(
+            new Vector2(chunkCenter.x, chunkCenter.z),
+            new Vector2(playerPos.x, playerPos.z)
+        );
+        
+        // Определяем нужно ли показывать чанк
+        // Добавляем буфер +50% чтобы чанки исчезали позже чем враги деспавнятся
+        float chunkCullingDistance = playerController.viewDistance * 1.5f;
+        bool shouldBeVisible = distanceXZ <= chunkCullingDistance;
+        
+        // Если состояние изменилось - обновляем
+        if (shouldBeVisible != isVisualizationActive)
+        {
+            SetVisualizationActive(shouldBeVisible);
+        }
+    }
+    
+    /// <summary>
+    /// Включить/выключить визуализацию чанка
+    /// </summary>
+    void SetVisualizationActive(bool active)
+    {
+        isVisualizationActive = active;
+        
+        // Включаем/выключаем рендерер
+        if (meshRenderer != null)
+        {
+            meshRenderer.enabled = active;
+        }
+        
+        // Включаем/выключаем коллайдер
+        if (_collider != null)
+        {
+            _collider.enabled = active;
+        }
     }
     
     void Update()
@@ -57,6 +131,14 @@ public class VoxelChunk16 : MonoBehaviour
         if (isDirty && Time.time - dirtyMarkTime >= SAVE_DELAY)
         {
             SaveChunk();
+        }
+        
+        // Кулинг: проверяем дистанцию до игрока раз в ~10 секунд
+        if (Time.time >= nextCullingCheckTime)
+        {
+            CheckCulling();
+            // Следующая проверка через 10 +- 2 секунды (рандом для распределения нагрузки)
+            nextCullingCheckTime = Time.time + Random.Range(8f, 12f);
         }
     }
     

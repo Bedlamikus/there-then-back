@@ -24,9 +24,6 @@ public class GameBootstrap : MonoBehaviour
     public bool autoFindSpawners = true;
     
     [Header("Settings")]
-    [Tooltip("Отключить игрока пока мир не готов")]
-    public bool disablePlayerUntilReady = true;
-    
     [Tooltip("Инициализировать камеру после спавна игрока")]
     public bool initializeCamera = true;
     
@@ -112,13 +109,8 @@ public class GameBootstrap : MonoBehaviour
         
         Debug.Log("GameBootstrap: Ожидаем готовности мира через событие WorldReady...");
         
-        // Если мир уже готов (маловероятно, но возможно), продолжаем сразу
-        if (voxelWorld.IsWorldReady)
-        {
-            Debug.Log("GameBootstrap: Мир уже готов, продолжаем инициализацию");
-            yield return StartCoroutine(ContinueInitialization());
-        }
-        // Иначе ждем события WorldReady, которое вызовет OnWorldReady()
+        // Просто ждем события GlobalEvents.WorldReady, которое вызовет OnWorldReady()
+        // НЕ проверяем IsWorldReady напрямую, чтобы избежать двойного вызова continuation
     }
     
     /// <summary>
@@ -147,9 +139,9 @@ public class GameBootstrap : MonoBehaviour
     IEnumerator ContinueInitialization()
     {
         // Защита от повторного вызова
-        if (isInitialized)
+        if (isInitialized || spawnedPlayer != null)
         {
-            Debug.LogWarning("GameBootstrap: Инициализация уже завершена");
+            Debug.LogWarning("GameBootstrap: Инициализация уже завершена или игрок уже создан");
             yield break;
         }
         
@@ -177,6 +169,13 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     IEnumerator SpawnPlayer()
     {
+        // Защита от двойного спавна
+        if (spawnedPlayer != null)
+        {
+            Debug.LogWarning("GameBootstrap: Игрок уже создан, пропускаем спавн");
+            yield break;
+        }
+        
         if (playerPrefab == null)
         {
             Debug.LogError("GameBootstrap: Префаб игрока не указан!");
@@ -246,33 +245,16 @@ public class GameBootstrap : MonoBehaviour
         spawnedPlayer = Instantiate(playerPrefab, spawnPosition, spawnRotation);
         spawnedPlayer.name = "Player"; // Убираем (Clone) из имени
         
-        
-        
-        // Если нужно, отключаем игрока пока мир не готов
-        if (disablePlayerUntilReady && !voxelWorld.IsWorldReady)
+        // Устанавливаем игрока в VoxelWorld для кулинга чанков
+        if (voxelWorld != null)
         {
-            var controller = spawnedPlayer.GetComponent<CharacterController>();
-            if (controller != null)
-            {
-                controller.enabled = false;
-                
-            }
-            
-            // Ждем готовности
-            while (!voxelWorld.IsWorldReady)
-            {
-                yield return null;
-            }
-            
-            // Включаем обратно
-            if (controller != null)
-            {
-                controller.enabled = true;
-                
-            }
+            voxelWorld.SetPlayer(spawnedPlayer.transform);
         }
         
+        // Игрок готов к игре (мир уже готов - стартовая зона визуализирована)
+        Debug.Log($"GameBootstrap: Игрок заспавнен и готов к игре! Остальные чанки грузятся в фоне.");
         
+        yield return null;
     }
     
     /// <summary>
@@ -701,6 +683,19 @@ public class GameBootstrap : MonoBehaviour
         if (spawnedPlayer != null)
         {
             Debug.Log("GameBootstrap: Уничтожение старого игрока...");
+            
+            // Отписываем от AutoSpawnService перед уничтожением
+            PlayerController pc = spawnedPlayer.GetComponent<PlayerController>();
+            if (pc != null && AutoSpawnService.Instance != null)
+            {
+                AutoSpawnService.Instance.UnregisterSpawnable(pc);
+                
+                // Сбрасываем флаг перемещения для нового игрока
+                AutoSpawnService.Instance.ResetPlayerSpawnFlag();
+                
+                Debug.Log("GameBootstrap: Игрок отписан от AutoSpawnService");
+            }
+            
             Destroy(spawnedPlayer);
             spawnedPlayer = null;
         }
@@ -732,13 +727,8 @@ public class GameBootstrap : MonoBehaviour
         // 5. Ждем события готовности мира (WorldReady вызовет ContinueAfterRegeneration)
         Debug.Log("GameBootstrap: Ожидаем события WorldReady для завершения регенерации...");
         
-        // Если мир уже готов, продолжаем сразу
-        if (voxelWorld.IsWorldReady)
-        {
-            Debug.Log("GameBootstrap: Мир уже готов, завершаем регенерацию");
-            yield return StartCoroutine(ContinueAfterRegeneration());
-        }
-        // Иначе событие WorldReady вызовет OnWorldReady(), который вызовет ContinueAfterRegeneration()
+        // Просто ждем события GlobalEvents.WorldReady, которое вызовет OnWorldReady()
+        // НЕ проверяем IsWorldReady напрямую, чтобы избежать двойного вызова continuation
     }
     
     /// <summary>
@@ -746,6 +736,13 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     IEnumerator ContinueAfterRegeneration()
     {
+        // Защита от повторного вызова
+        if (spawnedPlayer != null)
+        {
+            Debug.LogWarning("GameBootstrap: Игрок уже создан после регенерации");
+            yield break;
+        }
+        
         Debug.Log("GameBootstrap: Продолжаем после регенерации мира");
         
         // 6-8. Используем ту же логику что и при первом запуске

@@ -267,6 +267,12 @@ public class EnemySpawner : MonoBehaviour
                 continue; // Пробуем другую позицию
             }
             
+            // Проверка что под позицией есть земля (коллайдер)
+            if (!HasGroundBelow(spawnPosition))
+            {
+                continue; // Нет земли (чанк не визуализирован или позиция в воздухе)
+            }
+            
             // Проверка безопасности позиции
             if (checkSafeSpawn && !IsSafeSpawnPosition(spawnPosition))
             {
@@ -306,11 +312,19 @@ public class EnemySpawner : MonoBehaviour
         
         if (spawned < count)
         {
+            Debug.Log($"EnemySpawner [{name}]: Заспавнено только {spawned}/{count} врагов. Возможно, чанки еще не визуализированы.");
             
+            // Если не удалось заспавнить всех - пробуем позже
+            if (spawned < count)
+            {
+                float retryDelay = Random.Range(10f, 20f);
+                Debug.Log($"EnemySpawner [{name}]: Повторная попытка через {retryDelay:F1}с");
+                StartCoroutine(RetrySpawnAfterDelay(count - spawned, retryDelay));
+            }
         }
         else
         {
-            
+            Debug.Log($"EnemySpawner [{name}]: Успешно заспавнено {spawned} врагов");
         }
     }
     
@@ -452,6 +466,35 @@ public class EnemySpawner : MonoBehaviour
         // Если дошли до верха и не нашли - возвращаем Vector3.zero как признак неудачи
         
         return Vector3.zero;
+    }
+    
+    /// <summary>
+    /// Проверяет наличие земли под позицией через Raycast
+    /// </summary>
+    bool HasGroundBelow(Vector3 position)
+    {
+        // Проверяем raycast вниз с небольшой высоты
+        RaycastHit hit;
+        Vector3 rayStart = position + Vector3.up * 0.5f;
+        
+        if (Physics.Raycast(rayStart, Vector3.down, out hit, 5f))
+        {
+            // Нашли что-то под ногами
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Корутина повторной попытки спавна с задержкой
+    /// </summary>
+    IEnumerator RetrySpawnAfterDelay(int count, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        Debug.Log($"EnemySpawner [{name}]: Повторная попытка заспавнить {count} врагов");
+        SpawnEnemies(count);
     }
     
     /// <summary>

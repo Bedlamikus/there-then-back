@@ -51,6 +51,10 @@ public class VoxelWorld : MonoBehaviour
     // Точка спавна игрока
     private Vector3 playerSpawnPoint = Vector3.zero;
     public Vector3 PlayerSpawnPoint => playerSpawnPoint;
+    
+    // Ссылка на игрока для кулинга чанков
+    private Transform cachedPlayerTransform;
+    public Transform PlayerTransform => cachedPlayerTransform;
 
     void Awake()
     {
@@ -130,11 +134,11 @@ public class VoxelWorld : MonoBehaviour
     }
     
     /// <summary>
-    /// Постепенная генерация мира (по 1 чанку за несколько кадров)
+    /// Постепенная генерация мира (оптимизированная: сначала данные, потом визуализация)
     /// </summary>
     System.Collections.IEnumerator GenerateWorldProgressive()
     {
-        Debug.Log($"VoxelWorld: Начинаем постепенную генерацию ({chunksX}x{chunksZ} чанков)");
+        Debug.Log($"VoxelWorld: Начинаем генерацию ({chunksX}x{chunksZ} чанков)");
         
         // Очистка
         for (int i = transform.childCount - 1; i >= 0; i--)
@@ -146,43 +150,249 @@ public class VoxelWorld : MonoBehaviour
         if (generator == null)
             generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
         
-        // Генерируем чанки с задержкой
+        int totalChunks = chunksX * chunksZ;
+        int processedChunks = 0;
+        
+        // ЭТАП 1: Генерируем ДАННЫЕ всех чанков (без визуализации)
+        Debug.Log("VoxelWorld: Этап 1 - Генерация данных чанков (без мешей)");
+        GlobalEvents.WorldGenerationProgress.Invoke(0f);
+        
         for (int cz = 0; cz < chunksZ; cz++)
         {
             for (int cx = 0; cx < chunksX; cx++)
             {
-                CreateChunk(cx, cz, null, null); // Генерируем новый
+                CreateChunkDataOnly(cx, cz); // Только данные
+                processedChunks++;
                 
-                // Случайная задержка от 1 до 5 кадров
-                int framesToWait = Random.Range(minFramesPerChunk, maxFramesPerChunk + 1);
-                for (int i = 0; i < framesToWait; i++)
+                // Обновляем прогресс (0.0 - 0.5 для генерации данных)
+                float progress = (float)processedChunks / totalChunks * 0.5f;
+                GlobalEvents.WorldGenerationProgress.Invoke(progress);
+                
+                // Периодически отдаем управление
+                if (processedChunks % 5 == 0)
                 {
                     yield return null;
                 }
             }
         }
         
-        Debug.Log("VoxelWorld: Постепенная генерация завершена");
+        Debug.Log("VoxelWorld: Данные всех чанков сгенерированы");
+        GlobalEvents.WorldGenerationProgress.Invoke(0.5f);
         
-        // Генерируем каньоны (терраформирование)
+        // ЭТАП 2: Терраформирование (каньоны)
+        Debug.Log("VoxelWorld: Этап 2 - Терраформирование (каньоны)");
         if (generator != null)
         {
             generator.GenerateCanyonsInWorld(this);
         }
+        GlobalEvents.WorldGenerationProgress.Invoke(0.6f);
+        yield return null;
         
-        // Генерируем деревья после каньонов
+        // ЭТАП 3: Растительность (деревья)
+        Debug.Log("VoxelWorld: Этап 3 - Генерация деревьев");
         if (generator != null)
         {
             generator.GenerateTreesInWorld(this);
         }
+        GlobalEvents.WorldGenerationProgress.Invoke(0.7f);
+        yield return null;
+        
+        // ЭТАП 4: Вычисляем точку спавна
+        Debug.Log("VoxelWorld: Этап 4 - Расчет точки спавна");
+        CalculatePlayerSpawnPoint();
+        GlobalEvents.WorldGenerationProgress.Invoke(0.75f);
+        
+        // ЭТАП 5: Строим меши для чанков вокруг точки спавна (3x3)
+        Debug.Log("VoxelWorld: Этап 5 - Визуализация стартовой зоны");
+        int spawnChunkX = Mathf.FloorToInt(playerSpawnPoint.x / VoxelChunk16.WIDTH);
+        int spawnChunkZ = Mathf.FloorToInt(playerSpawnPoint.z / VoxelChunk16.DEPTH);
+        
+        BuildMeshesAroundSpawn(spawnChunkX, spawnChunkZ, 1); // Радиус 1 = 3x3 чанка
+        GlobalEvents.WorldGenerationProgress.Invoke(0.8f);
+        yield return null;
+        
+        Debug.Log($"VoxelWorld: Стартовая зона визуализирована, точка спавна: {playerSpawnPoint}");
+        
+        // ЭТАП 6: Мир готов для игры! (игрок может спавниться)
+        IsGenerating = false;
+        IsWorldReady = true;
+        
+        Debug.Log("VoxelWorld: Мир готов! Игрок может появиться. Фоновая визуализация продолжается...");
+        GlobalEvents.WorldReady.Invoke();
+        
+        // Запускаем фоновую визуализацию остальных чанков
+        StartCoroutine(BuildRemainingChunksInBackground(spawnChunkX, spawnChunkZ));
     }
     
     /// <summary>
-    /// Постепенная загрузка мира из сохранений
+    /// Создает только данные чанка без построения меша
+    /// </summary>
+    void CreateChunkDataOnly(int cx, int cz)
+    {
+        // Генерируем данные
+        int[,,] data = generator.BuildChunkData(cx, cz);
+        short[,,] hp = AllocateHP(data);
+        
+        // Создаем GameObject
+        var go = new GameObject($"Chunk({cx},{cz})");
+        go.transform.parent = transform;
+        go.transform.position = new Vector3(cx * VoxelChunk16.WIDTH, 0, cz * VoxelChunk16.DEPTH);
+        
+        // Добавляем VoxelChunk16 но НЕ строим меш
+        var builder = go.AddComponent<VoxelChunk16>();
+        builder.atlasMaterial = atlasMaterial;
+        builder.generateCollider = generateColliders;
+        
+        // Настройка HP
+        builder.hpData = hp;
+        builder.useDamageTiles = true;
+        builder.typeMaxHpLut = new int[256];
+        builder.typeMaxHpLut[0] = 5;   // Трава
+        builder.typeMaxHpLut[1] = 5;   // Земля
+        builder.typeMaxHpLut[2] = 8;   // Камень
+        builder.typeMaxHpLut[3] = 6;   // Дерево
+        builder.typeMaxHpLut[4] = 2;   // Листва
+        builder.typeMaxHpLut[6] = 12;  // Уголь
+        builder.typeMaxHpLut[7] = 12;  // Золото
+        
+        // Настройка типов
+        builder.typeToTileIndex = new int[256];
+        builder.typeToTileIndex[0] = 0;  // Трава
+        builder.typeToTileIndex[1] = 1;  // Земля
+        builder.typeToTileIndex[2] = 2;  // Камень
+        builder.typeToTileIndex[3] = 3;  // Дерево
+        builder.typeToTileIndex[4] = 4;  // Листва
+        builder.typeToTileIndex[6] = 6;  // Уголь
+        builder.typeToTileIndex[7] = 7;  // Золото
+        for (int t = 0; t < builder.typeToTileIndex.Length; t++)
+            if (t != 0 && t != 1 && t != 2 && t != 3 && t != 4 && t != 6 && t != 7)
+                builder.typeToTileIndex[t] = 2;
+        
+        // Инициализируем автосохранение
+        builder.Initialize(cx, cz, data);
+        
+        // НЕ строим меш! Это будет сделано позже
+        // builder.Build(data); ← НЕ вызываем
+        
+        // Регистрируем чанк
+        _chunks[(cx, cz)] = new ChunkEntry
+        {
+            cx = cx,
+            cz = cz,
+            data = data,
+            hp = hp,
+            builder = builder,
+            go = go
+        };
+        
+        // Устанавливаем игрока для кулинга (если есть)
+        if (cachedPlayerTransform != null)
+        {
+            builder.SetPlayer(cachedPlayerTransform);
+        }
+    }
+    
+    /// <summary>
+    /// Строит меши для чанков вокруг точки спавна
+    /// </summary>
+    void BuildMeshesAroundSpawn(int centerCx, int centerCz, int radius)
+    {
+        int built = 0;
+        
+        for (int cz = centerCz - radius; cz <= centerCz + radius; cz++)
+        {
+            for (int cx = centerCx - radius; cx <= centerCx + radius; cx++)
+            {
+                if (cx < 0 || cx >= chunksX || cz < 0 || cz >= chunksZ)
+                    continue;
+                
+                if (_chunks.TryGetValue((cx, cz), out var entry))
+                {
+                    if (entry.builder != null && entry.data != null)
+                    {
+                        entry.builder.Build(entry.data);
+                        built++;
+                    }
+                }
+            }
+        }
+        
+        Debug.Log($"VoxelWorld: Построено {built} мешей в стартовой зоне");
+    }
+    
+    /// <summary>
+    /// Строит меши оставшихся чанков по спирали в фоновом режиме
+    /// </summary>
+    System.Collections.IEnumerator BuildRemainingChunksInBackground(int centerCx, int centerCz)
+    {
+        Debug.Log("VoxelWorld: Начинаем фоновую визуализацию остальных чанков");
+        
+        HashSet<(int, int)> alreadyBuilt = new HashSet<(int, int)>();
+        
+        // Помечаем чанки вокруг спавна как уже построенные
+        for (int cz = centerCz - 1; cz <= centerCz + 1; cz++)
+        {
+            for (int cx = centerCx - 1; cx <= centerCx + 1; cx++)
+            {
+                if (cx >= 0 && cx < chunksX && cz >= 0 && cz < chunksZ)
+                {
+                    alreadyBuilt.Add((cx, cz));
+                }
+            }
+        }
+        
+        int totalToBuild = chunksX * chunksZ - alreadyBuilt.Count;
+        int built = 0;
+        
+        // Строим по спирали от центра
+        int maxRadius = Mathf.Max(chunksX, chunksZ);
+        
+        for (int radius = 2; radius <= maxRadius; radius++)
+        {
+            for (int cz = centerCz - radius; cz <= centerCz + radius; cz++)
+            {
+                for (int cx = centerCx - radius; cx <= centerCx + radius; cx++)
+                {
+                    // Проверяем что это граница текущего радиуса
+                    if (Mathf.Abs(cx - centerCx) != radius && Mathf.Abs(cz - centerCz) != radius)
+                        continue;
+                    
+                    if (cx < 0 || cx >= chunksX || cz < 0 || cz >= chunksZ)
+                        continue;
+                    
+                    if (alreadyBuilt.Contains((cx, cz)))
+                        continue;
+                    
+                    if (_chunks.TryGetValue((cx, cz), out var entry))
+                    {
+                        if (entry.builder != null && entry.data != null)
+                        {
+                            entry.builder.Build(entry.data);
+                            built++;
+                            alreadyBuilt.Add((cx, cz));
+                            
+                            // Обновляем прогресс (0.8 - 1.0 для фоновой визуализации)
+                            float bgProgress = 0.8f + (float)built / totalToBuild * 0.2f;
+                            GlobalEvents.WorldGenerationProgress.Invoke(bgProgress);
+                            
+                            // Отдаем управление ПОСЛЕ КАЖДОГО чанка для плавности
+                            yield return null;
+                        }
+                    }
+                }
+            }
+        }
+        
+        GlobalEvents.WorldGenerationProgress.Invoke(1f);
+        Debug.Log($"VoxelWorld: Фоновая визуализация завершена ({built} чанков)");
+    }
+    
+    /// <summary>
+    /// Прогрессивная загрузка мира (сначала данные, потом стартовая зона, затем остальное в фоне)
     /// </summary>
     System.Collections.IEnumerator LoadWorldProgressive()
     {
-        Debug.Log($"VoxelWorld: Начинаем постепенную загрузку ({chunksX}x{chunksZ} чанков)");
+        Debug.Log($"VoxelWorld: Начинаем прогрессивную загрузку ({chunksX}x{chunksZ} чанков)");
         
         // Очистка
         for (int i = transform.childCount - 1; i >= 0; i--)
@@ -191,42 +401,95 @@ public class VoxelWorld : MonoBehaviour
         }
         _chunks.Clear();
         
+        int totalChunks = chunksX * chunksZ;
+        int processedChunks = 0;
         int loadedCount = 0;
         int generatedCount = 0;
         
-        // Загружаем чанки с задержкой
+        // ЭТАП 1: Загружаем ДАННЫЕ всех чанков (без визуализации)
+        Debug.Log("VoxelWorld: Этап 1 - Загрузка данных чанков (без мешей)");
+        GlobalEvents.WorldGenerationProgress.Invoke(0f);
+        
         for (int cz = 0; cz < chunksZ; cz++)
         {
             for (int cx = 0; cx < chunksX; cx++)
             {
-                // Пытаемся загрузить чанк
                 string chunkName = $"Chunk_{cx}_{cz}";
                 var chunkSave = new SaveData<SingleChunkData>(chunkName);
                 
                 if (chunkSave.Exists())
                 {
+                    // Загружаем из сохранения
                     var chunkData = chunkSave.Load();
                     chunkData.UnpackData(out int[,,] data, out short[,,] hp);
-                    CreateChunk(cx, cz, data, hp);
+                    
+                    // Создаем GameObject и данные, но НЕ строим меш
+                    var go = new GameObject($"Chunk({cx},{cz})");
+                    go.transform.parent = transform;
+                    go.transform.position = new Vector3(cx * VoxelChunk16.WIDTH, 0, cz * VoxelChunk16.DEPTH);
+                    
+                    var builder = go.AddComponent<VoxelChunk16>();
+                    builder.atlasMaterial = atlasMaterial;
+                    builder.generateCollider = generateColliders;
+                    builder.hpData = hp;
+                    
+                    for (int t = 0; t < 5; t++)
+                        builder.typeToTileIndex[t] = t == 0 ? 0 : (t == 3 ? 1 : (t == 4 ? 3 : 2));
+                    
+                    builder.Initialize(cx, cz, data);
+                    
+                    _chunks[(cx, cz)] = new ChunkEntry { cx = cx, cz = cz, data = data, hp = hp, builder = builder, go = go };
                     loadedCount++;
                 }
                 else
                 {
-                    // Если чанк не сохранен, генерируем новый
-                    CreateChunk(cx, cz, null, null);
+                    // Генерируем недостающий чанк
+                    CreateChunkDataOnly(cx, cz);
                     generatedCount++;
                 }
                 
-                // Случайная задержка
-                int framesToWait = Random.Range(minFramesPerChunk, maxFramesPerChunk + 1);
-                for (int i = 0; i < framesToWait; i++)
+                processedChunks++;
+                
+                // Обновляем прогресс (0.0 - 0.7 для загрузки данных)
+                float progress = (float)processedChunks / totalChunks * 0.7f;
+                GlobalEvents.WorldGenerationProgress.Invoke(progress);
+                
+                // Периодически отдаем управление
+                if (processedChunks % 5 == 0)
                 {
                     yield return null;
                 }
             }
         }
         
-        Debug.Log($"VoxelWorld: Загрузка завершена (загружено: {loadedCount}, создано: {generatedCount})");
+        Debug.Log($"VoxelWorld: Данные загружены (загружено: {loadedCount}, создано: {generatedCount})");
+        GlobalEvents.WorldGenerationProgress.Invoke(0.7f);
+        
+        // ЭТАП 2: Вычисляем точку спавна
+        Debug.Log("VoxelWorld: Этап 2 - Расчет точки спавна");
+        CalculatePlayerSpawnPoint();
+        GlobalEvents.WorldGenerationProgress.Invoke(0.75f);
+        
+        // ЭТАП 3: Строим меши для чанков вокруг точки спавна (3x3)
+        Debug.Log("VoxelWorld: Этап 3 - Визуализация стартовой зоны");
+        int spawnChunkX = Mathf.FloorToInt(playerSpawnPoint.x / VoxelChunk16.WIDTH);
+        int spawnChunkZ = Mathf.FloorToInt(playerSpawnPoint.z / VoxelChunk16.DEPTH);
+        
+        BuildMeshesAroundSpawn(spawnChunkX, spawnChunkZ, 1); // Радиус 1 = 3x3 чанка
+        GlobalEvents.WorldGenerationProgress.Invoke(0.8f);
+        yield return null;
+        
+        Debug.Log($"VoxelWorld: Стартовая зона визуализирована, точка спавна: {playerSpawnPoint}");
+        
+        // ЭТАП 4: Мир готов для игры!
+        IsGenerating = false;
+        IsWorldReady = true;
+        
+        Debug.Log("VoxelWorld: Мир готов! Игрок может появиться. Фоновая визуализация продолжается...");
+        GlobalEvents.WorldReady.Invoke();
+        
+        // Запускаем фоновую визуализацию остальных чанков
+        StartCoroutine(BuildRemainingChunksInBackground(spawnChunkX, spawnChunkZ));
     }
     
     /// <summary>
@@ -264,12 +527,13 @@ public class VoxelWorld : MonoBehaviour
     [ContextMenu("Generate world")]
     public void Generate()
     {
-        // Мгновенная генерация (для отладки)
+        // Мгновенная генерация (для отладки) - с визуализацией всех чанков
         for (int i = transform.childCount - 1; i >= 0; i--) DestroyImmediate(transform.GetChild(i).gameObject);
         _chunks.Clear();
 
         if (generator == null) generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
 
+        // Генерируем все чанки сразу (с мешами)
         for (int cz = 0; cz < chunksZ; cz++)
             for (int cx = 0; cx < chunksX; cx++)
             {
@@ -356,6 +620,12 @@ public class VoxelWorld : MonoBehaviour
             builder = builder,
             go = go
         };
+        
+        // Устанавливаем игрока для кулинга (если есть)
+        if (cachedPlayerTransform != null)
+        {
+            builder.SetPlayer(cachedPlayerTransform);
+        }
     }
 
     short[,,] AllocateHP(int[,,] data)
@@ -613,6 +883,23 @@ public class VoxelWorld : MonoBehaviour
         
         int blockType = entry.data[lx, wy, lz];
         return blockType != AIR; // Возвращаем true если блок не воздух
+    }
+    
+    // === Публичный метод для установки игрока (для кулинга чанков) ===
+    public void SetPlayer(Transform playerTransform)
+    {
+        cachedPlayerTransform = playerTransform;
+        
+        // Применяем игрока ко всем существующим чанкам
+        foreach (var entry in _chunks.Values)
+        {
+            if (entry.builder != null)
+            {
+                entry.builder.SetPlayer(playerTransform);
+            }
+        }
+        
+        Debug.Log($"VoxelWorld: Игрок установлен для {_chunks.Count} чанков (кулинг активирован)");
     }
     
     // === Публичный метод для получения типа блока ===
@@ -914,15 +1201,14 @@ public class VoxelWorld : MonoBehaviour
         IsGenerating = false;
         IsWorldReady = true;
         
-        // 6. Вычисляем новую точку спавна
-        CalculatePlayerSpawnPoint();
-        Debug.Log($"VoxelWorld: Новая точка спавна: {playerSpawnPoint}");
-        
-        // 7. Принудительно сохраняем все чанки нового мира
+        // 6. Принудительно сохраняем все чанки нового мира
         Debug.Log("VoxelWorld: Сохранение новых чанков...");
         ForceSaveAllChunks();
         
         Debug.Log("VoxelWorld: Регенерация мира завершена!");
+        
+        // 7. Уведомляем о готовности мира
+        GlobalEvents.WorldReady.Invoke();
     }
     
 }

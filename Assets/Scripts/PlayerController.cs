@@ -16,6 +16,10 @@ public class PlayerController : MonoBehaviour, ISpawnable
     public float coyoteTime = 0.1f;              // Время-призрак для прыжка после отрыва от земли
     public float groundCheckDistance = 0.2f;     // Расстояние проверки земли
 
+    [Header("View Distance")]
+    [Tooltip("Дистанция видимости для кулинга чанков и врагов")]
+    public float viewDistance = 100f;            // Дистанция видимости (в блоках)
+    
     [Header("Animation")]
     public Animator animator;                    // Аниматор персонажа
     public string speedParameter = "Speed";      // Параметр скорости в аниматоре
