@@ -12,25 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 944ac3b2ebf953140bc84db8c034cc72, type: 3}
   m_Name: TreeConfig
   m_EditorClassIdentifier: 
-  minTrunkHeight: 6
-  maxTrunkHeight: 10
+  minTrunkHeight: 5
+  maxTrunkHeight: 15
   trunkRadius: 1
-  trunkTaper: 0.2
   minBranches: 3
-  maxBranches: 6
-  minBranchLength: 2
-  maxBranchLength: 4
+  maxBranches: 5
+  minBranchLength: 1
+  maxBranchLength: 3
   branchStartHeight: 0.5
-  branchAngle: 35
+  branchAngle: 30
   subBranchProbability: 0.3
   crownRadius: 4
   crownHeight: 6
   crownElongation: 0.3
-  crownDensity: 0.7
+  crownDensity: 0.93
   leavesOnBranches: 1
-  branchCrownRadius: 2
-  noiseScale: 5
-  noiseThreshold: 0.3
+  branchCrownRadius: 3
+  noiseScale: 8
+  noiseThreshold: 0.15
   useNoise: 1
   woodBlockType: 3
   leavesBlockType: 4

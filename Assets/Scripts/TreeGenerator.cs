@@ -43,40 +43,15 @@ public class TreeGenerator
     }
     
     /// <summary>
-    /// Генерирует вертикальный ствол
+    /// Генерирует вертикальный ствол (один блок в ширину)
     /// </summary>
     void GenerateTrunk(Vector3Int basePosition, int height)
     {
+        // Ствол - один центральный блок на каждом уровне
         for (int y = 0; y < height; y++)
         {
-            // Вычисляем радиус на текущей высоте (сужение к верху)
-            float heightRatio = (float)y / height;
-            float currentRadius = config.trunkRadius * (1f - config.trunkTaper * heightRatio);
-            int radiusInt = Mathf.CeilToInt(currentRadius);
-            
-            // Создаем круг из блоков ствола
-            for (int x = -radiusInt; x <= radiusInt; x++)
-            {
-                for (int z = -radiusInt; z <= radiusInt; z++)
-                {
-                    // Проверка круглой формы
-                    float distance = Mathf.Sqrt(x * x + z * z);
-                    if (distance <= currentRadius)
-                    {
-                        Vector3Int blockPos = basePosition + new Vector3Int(x, y, z);
-                        
-                        // Добавляем шум для органичности
-                        if (config.useNoise)
-                        {
-                            float noise = GetNoise3D(blockPos);
-                            if (noise < config.noiseThreshold && distance > currentRadius * 0.5f)
-                                continue; // Пропускаем некоторые блоки на краях
-                        }
-                        
-                        blocksToPlace.Add((blockPos, config.woodBlockType));
-                    }
-                }
-            }
+            Vector3Int blockPos = basePosition + new Vector3Int(0, y, 0);
+            blocksToPlace.Add((blockPos, config.woodBlockType));
         }
     }
     

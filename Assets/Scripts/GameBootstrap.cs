@@ -24,12 +24,6 @@ public class GameBootstrap : MonoBehaviour
     public bool autoFindSpawners = true;
     
     [Header("Settings")]
-    [Tooltip("Ждать готовности мира перед спавном игрока")]
-    public bool waitForWorldReady = true;
-    
-    [Tooltip("Максимальное время ожидания мира (секунды)")]
-    public float maxWaitTime = 60f;
-    
     [Tooltip("Отключить игрока пока мир не готов")]
     public bool disablePlayerUntilReady = true;
     
@@ -46,17 +40,20 @@ public class GameBootstrap : MonoBehaviour
     private GameObject spawnedPlayer;
     private bool isInitialized = false;
     private SaveData<PlayerPositionData> playerPositionSave;
+    private bool isRegenerating = false;  // Флаг регенерации мира
     
     void Awake()
     {
-        // Подписываемся на событие регенерации мира
+        // Подписываемся на события
         GlobalEvents.RegenerateWorld.AddListener(RegenerateWorld);
+        GlobalEvents.WorldReady.AddListener(OnWorldReady);
     }
     
     void OnDestroy()
     {
-        // Отписываемся от события
+        // Отписываемся от событий
         GlobalEvents.RegenerateWorld.RemoveListener(RegenerateWorld);
+        GlobalEvents.WorldReady.RemoveListener(OnWorldReady);
     }
     
     void Start()
@@ -93,12 +90,11 @@ public class GameBootstrap : MonoBehaviour
     /// </summary>
     IEnumerator InitializeGame()
     {
-        
+        Debug.Log("GameBootstrap: Начало инициализации игры");
         
         // Шаг 1: Найти VoxelWorld если не указан
         if (voxelWorld == null)
         {
-            
             voxelWorld = FindObjectOfType<VoxelWorld>();
             
             if (voxelWorld == null)
@@ -107,29 +103,57 @@ public class GameBootstrap : MonoBehaviour
                 yield break;
             }
             
-            
+            Debug.Log("GameBootstrap: VoxelWorld найден");
         }
         
-        // Шаг 2: Ждать готовности мира
-        if (waitForWorldReady)
+        // Шаг 2: Ждем события готовности мира (через GlobalEvents.WorldReady)
+        // Мир уже начал генерацию в своем Start()
+        // Когда он закончит, вызовется OnWorldReady()
+        
+        Debug.Log("GameBootstrap: Ожидаем готовности мира через событие WorldReady...");
+        
+        // Если мир уже готов (маловероятно, но возможно), продолжаем сразу
+        if (voxelWorld.IsWorldReady)
         {
-            
-            
-            float startTime = Time.time;
-            while (!voxelWorld.IsWorldReady)
-            {
-                // Проверка таймаута
-                if (Time.time - startTime > maxWaitTime)
-                {
-                    Debug.LogError($"GameBootstrap: Превышено время ожидания мира ({maxWaitTime} сек)!");
-                    yield break;
-                }
-                
-                yield return null;
-            }
-            
-            Debug.Log($"GameBootstrap: Мир готов! (время ожидания: {Time.time - startTime:F2} сек)");
+            Debug.Log("GameBootstrap: Мир уже готов, продолжаем инициализацию");
+            yield return StartCoroutine(ContinueInitialization());
         }
+        // Иначе ждем события WorldReady, которое вызовет OnWorldReady()
+    }
+    
+    /// <summary>
+    /// Обработчик события готовности мира
+    /// </summary>
+    void OnWorldReady()
+    {
+        Debug.Log("GameBootstrap: Получено событие WorldReady");
+        
+        // Различаем первую инициализацию и регенерацию
+        if (isRegenerating)
+        {
+            Debug.Log("GameBootstrap: Продолжаем регенерацию мира");
+            StartCoroutine(ContinueAfterRegeneration());
+        }
+        else
+        {
+            Debug.Log("GameBootstrap: Продолжаем инициализацию игры");
+            StartCoroutine(ContinueInitialization());
+        }
+    }
+    
+    /// <summary>
+    /// Продолжение инициализации после готовности мира
+    /// </summary>
+    IEnumerator ContinueInitialization()
+    {
+        // Защита от повторного вызова
+        if (isInitialized)
+        {
+            Debug.LogWarning("GameBootstrap: Инициализация уже завершена");
+            yield break;
+        }
+        
+        Debug.Log("GameBootstrap: Продолжаем инициализацию после готовности мира");
         
         // Шаг 3: Спавн игрока
         yield return StartCoroutine(SpawnPlayer());
@@ -145,6 +169,7 @@ public class GameBootstrap : MonoBehaviour
         
         isInitialized = true;
         
+        Debug.Log("GameBootstrap: Инициализация игры завершена");
     }
     
     /// <summary>
@@ -654,6 +679,7 @@ public class GameBootstrap : MonoBehaviour
         Debug.Log("=== НАЧАЛО РЕГЕНЕРАЦИИ МИРА ===");
         
         isInitialized = false; // Помечаем что идет регенерация
+        isRegenerating = true; // Устанавливаем флаг регенерации
         
         // 1. Деспавн всех врагов через спавнеры
         Debug.Log("GameBootstrap: Деспавн врагов...");
@@ -703,20 +729,24 @@ public class GameBootstrap : MonoBehaviour
         }
         yield return null;
         
-        // 5. Ждем готовности мира (на всякий случай)
-        if (waitForWorldReady)
+        // 5. Ждем события готовности мира (WorldReady вызовет ContinueAfterRegeneration)
+        Debug.Log("GameBootstrap: Ожидаем события WorldReady для завершения регенерации...");
+        
+        // Если мир уже готов, продолжаем сразу
+        if (voxelWorld.IsWorldReady)
         {
-            float startTime = Time.time;
-            while (!voxelWorld.IsWorldReady)
-            {
-                if (Time.time - startTime > maxWaitTime)
-                {
-                    Debug.LogError($"GameBootstrap: Превышено время ожидания мира ({maxWaitTime} сек)!");
-                    yield break;
-                }
-                yield return null;
-            }
+            Debug.Log("GameBootstrap: Мир уже готов, завершаем регенерацию");
+            yield return StartCoroutine(ContinueAfterRegeneration());
         }
+        // Иначе событие WorldReady вызовет OnWorldReady(), который вызовет ContinueAfterRegeneration()
+    }
+    
+    /// <summary>
+    /// Продолжение после регенерации мира
+    /// </summary>
+    IEnumerator ContinueAfterRegeneration()
+    {
+        Debug.Log("GameBootstrap: Продолжаем после регенерации мира");
         
         // 6-8. Используем ту же логику что и при первом запуске
         yield return StartCoroutine(SpawnPlayer());
@@ -745,6 +775,7 @@ public class GameBootstrap : MonoBehaviour
         }
         
         isInitialized = true;
+        isRegenerating = false; // Сбрасываем флаг регенерации
         
         Debug.Log("=== РЕГЕНЕРАЦИЯ МИРА ЗАВЕРШЕНА ===");
     }

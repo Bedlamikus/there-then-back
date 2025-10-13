@@ -779,8 +779,6 @@ MonoBehaviour:
   enemySpawners:
   - {fileID: 1156184740}
   autoFindSpawners: 0
-  waitForWorldReady: 1
-  maxWaitTime: 5
   disablePlayerUntilReady: 1
   initializeCamera: 1
   savePlayerPosition: 1
@@ -1664,8 +1662,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 36cd1cc3c8b4afd49bae040c75981e69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chunksX: 5
-  chunksZ: 5
+  chunksX: 12
+  chunksZ: 12
+  generateCanyons: 1
+  canyonConfig: {fileID: 11400000, guid: ea5c018317cdce74d9ac0bc23d7a207a, type: 2}
+  canyonCount: 1
   generateTrees: 1
   treeConfig: {fileID: 11400000, guid: c7accb5f22f98324bbc7602092d5b790, type: 2}
   treesPerChunk: 2
@@ -1723,8 +1724,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d9ef42c58e7259a478e9bc0f7e723aea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chunksX: 5
-  chunksZ: 5
+  chunksX: 12
+  chunksZ: 12
   atlasMaterial: {fileID: 2100000, guid: 6f595d1f964b923478fe0c7c291c547a, type: 2}
   generateColliders: 1
   generator: {fileID: 1766461109}

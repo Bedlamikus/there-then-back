@@ -7,6 +7,17 @@ public class VoxelWorldGenerator : MonoBehaviour
     public int chunksX = 5;
     public int chunksZ = 5;
     
+    [Header("Canyons")]
+    [Tooltip("Генерировать каньоны")]
+    public bool generateCanyons = true;
+    
+    [Tooltip("Конфигурация каньонов")]
+    public CanyonConfig canyonConfig;
+    
+    [Tooltip("Количество каньонов в мире")]
+    [Range(0, 5)]
+    public int canyonCount = 1;
+    
     [Header("Trees")]
     [Tooltip("Генерировать деревья")]
     public bool generateTrees = true;
@@ -198,7 +209,60 @@ public class VoxelWorldGenerator : MonoBehaviour
     }
     
     /// <summary>
-    /// Генерация деревьев для всего мира (вызывается после создания всех чанков)
+    /// Генерация каньонов в мире (вызывается после создания всех чанков, до деревьев)
+    /// </summary>
+    public void GenerateCanyonsInWorld(VoxelWorld world)
+    {
+        if (!generateCanyons || canyonConfig == null || world == null)
+        {
+            Debug.Log("VoxelWorldGenerator: Генерация каньонов отключена или конфиг не установлен");
+            return;
+        }
+        
+        Debug.Log("VoxelWorldGenerator: Начинаем генерацию каньонов...");
+        
+        CanyonGenerator canyonGen = new CanyonGenerator(canyonConfig, world);
+        
+        int worldWidth = chunksX * VoxelChunk16.WIDTH;
+        int worldDepth = chunksZ * VoxelChunk16.DEPTH;
+        
+        for (int i = 0; i < canyonCount; i++)
+        {
+            // Случайная стартовая позиция для каньона
+            System.Random canyonRandom = new System.Random(currentSeed ^ (i * 999983));
+            
+            int startX = canyonRandom.Next(worldWidth / 4, worldWidth * 3 / 4);
+            int startZ = canyonRandom.Next(worldDepth / 4, worldDepth * 3 / 4);
+            
+            // Находим высоту поверхности в стартовой точке
+            int surfaceY = -1;
+            for (int y = VoxelChunk16.HEIGHT - 1; y >= 0; y--)
+            {
+                if (world.HasBlockAt(startX, y, startZ))
+                {
+                    surfaceY = y;
+                    break;
+                }
+            }
+            
+            if (surfaceY < canyonConfig.minGenerationHeight)
+            {
+                Debug.LogWarning($"VoxelWorldGenerator: Каньон #{i} - поверхность слишком низкая ({surfaceY}), пропускаем");
+                continue;
+            }
+            
+            Vector3 startPosition = new Vector3(startX, surfaceY, startZ);
+            int canyonSeed = currentSeed ^ (i * 999983);
+            
+            canyonGen.GenerateCanyon(startPosition, canyonSeed);
+            Debug.Log($"VoxelWorldGenerator: Каньон #{i} сгенерирован от {startPosition}");
+        }
+        
+        Debug.Log($"VoxelWorldGenerator: Генерация {canyonCount} каньонов завершена");
+    }
+    
+    /// <summary>
+    /// Генерация деревьев для всего мира (вызывается после каньонов)
     /// </summary>
     public void GenerateTreesInWorld(VoxelWorld world)
     {

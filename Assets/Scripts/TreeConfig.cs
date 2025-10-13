@@ -8,20 +8,15 @@ public class TreeConfig : ScriptableObject
 {
     [Header("Tree Size")]
     [Tooltip("Минимальная высота ствола (блоки)")]
-    [Range(4, 20)]
-    public int minTrunkHeight = 6;
+    [Range(4, 30)]
+    public int minTrunkHeight = 5;
     
     [Tooltip("Максимальная высота ствола (блоки)")]
-    [Range(4, 20)]
-    public int maxTrunkHeight = 10;
+    [Range(4, 30)]
+    public int maxTrunkHeight = 15;
     
-    [Tooltip("Радиус ствола у основания (блоки)")]
-    [Range(1, 3)]
-    public int trunkRadius = 1;
-    
-    [Tooltip("Сужение ствола к верху (0 = цилиндр, 1 = конус)")]
-    [Range(0f, 1f)]
-    public float trunkTaper = 0.2f;
+    [Tooltip("Радиус ствола (блоки) - всегда 1 блок в ширину")]
+    public int trunkRadius = 1; // Используется для проверок размера, ствол всегда 1 блок
     
     [Header("Branches")]
     [Tooltip("Минимальное количество веток")]
@@ -55,11 +50,11 @@ public class TreeConfig : ScriptableObject
     [Header("Crown (Листва)")]
     [Tooltip("Радиус кроны (блоки)")]
     [Range(2, 8)]
-    public int crownRadius = 4;
+    public int crownRadius = 5;
     
     [Tooltip("Высота кроны (блоки)")]
     [Range(2, 12)]
-    public int crownHeight = 6;
+    public int crownHeight = 7;
     
     [Tooltip("Форма кроны (0 = сфера, 1 = продолговатая вверх)")]
     [Range(0f, 1f)]
@@ -67,7 +62,7 @@ public class TreeConfig : ScriptableObject
     
     [Tooltip("Плотность листвы (0 = редкая, 1 = плотная)")]
     [Range(0f, 1f)]
-    public float crownDensity = 0.7f;
+    public float crownDensity = 0.85f;
     
     [Tooltip("Создавать листву на концах веток")]
     public bool leavesOnBranches = true;
@@ -79,11 +74,11 @@ public class TreeConfig : ScriptableObject
     [Header("Noise Settings")]
     [Tooltip("Масштаб шума для органичности формы")]
     [Range(1f, 20f)]
-    public float noiseScale = 5f;
+    public float noiseScale = 8f;
     
-    [Tooltip("Порог шума для создания блоков (выше = меньше блоков)")]
+    [Tooltip("Порог шума для создания блоков (меньше = меньше пропусков = пышнее)")]
     [Range(0f, 1f)]
-    public float noiseThreshold = 0.3f;
+    public float noiseThreshold = 0.15f;
     
     [Tooltip("Использовать шум для органичности")]
     public bool useNoise = true;

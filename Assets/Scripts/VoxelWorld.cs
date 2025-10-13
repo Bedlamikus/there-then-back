@@ -97,6 +97,10 @@ public class VoxelWorld : MonoBehaviour
             settings.worldChunksZ = chunksZ;
             gameSettings.Data = settings;
             gameSettings.Save();
+            
+            // Сохраняем сгенерированные чанки
+            Debug.Log("VoxelWorld: Сохранение сгенерированных чанков...");
+            ForceSaveAllChunks();
         }
         else
         {
@@ -120,6 +124,9 @@ public class VoxelWorld : MonoBehaviour
         CalculatePlayerSpawnPoint();
         
         Debug.Log($"VoxelWorld: Инициализация завершена ({_chunks.Count} чанков), мир готов! Точка спавна: {playerSpawnPoint}");
+        
+        // Уведомляем всех о готовности мира
+        GlobalEvents.WorldReady.Invoke();
     }
     
     /// <summary>
@@ -157,7 +164,13 @@ public class VoxelWorld : MonoBehaviour
         
         Debug.Log("VoxelWorld: Постепенная генерация завершена");
         
-        // Генерируем деревья после создания всех чанков
+        // Генерируем каньоны (терраформирование)
+        if (generator != null)
+        {
+            generator.GenerateCanyonsInWorld(this);
+        }
+        
+        // Генерируем деревья после каньонов
         if (generator != null)
         {
             generator.GenerateTreesInWorld(this);
@@ -263,7 +276,13 @@ public class VoxelWorld : MonoBehaviour
                 CreateChunk(cx, cz, null, null);
             }
         
-        // Генерируем деревья после создания всех чанков
+        // Генерируем каньоны (терраформирование)
+        if (generator != null)
+        {
+            generator.GenerateCanyonsInWorld(this);
+        }
+        
+        // Генерируем деревья после каньонов
         if (generator != null)
         {
             generator.GenerateTreesInWorld(this);
@@ -493,8 +512,32 @@ public class VoxelWorld : MonoBehaviour
 
         entry.data[lx, wy, lz] = blockType;
         // hp: максимум для типа
-        int maxHp = blockType switch { 0 => 5, 1 => 5, 2 => 8, 6 => 12, 7 => 12, _ => 6 };
-        entry.hp[lx, wy, lz] = (short)maxHp;
+        entry.hp[lx, wy, lz] = (short)GetMaxHP(blockType);
+
+        if (rebuildChunk)
+        {
+            entry.builder.Build(entry.data);
+            entry.builder.MarkDirty();
+        }
+        return true;
+    }
+    
+    // === ПУБЛИЧНО: установить блок принудительно (перезаписывает существующие) ===
+    public bool SetBlockForced(int wx, int wy, int wz, int blockType, bool rebuildChunk = true)
+    {
+        if (wx < 0 || wz < 0 || wy < 0 || wy >= VoxelChunk16.HEIGHT) return false;
+        if (wx >= chunksX * VoxelChunk16.WIDTH || wz >= chunksZ * VoxelChunk16.DEPTH) return false;
+
+        int cxi = wx / VoxelChunk16.WIDTH;
+        int czi = wz / VoxelChunk16.DEPTH;
+        int lx = wx % VoxelChunk16.WIDTH;
+        int lz = wz % VoxelChunk16.DEPTH;
+
+        if (!_chunks.TryGetValue((cxi, czi), out var entry)) return false;
+
+        // Устанавливаем блок независимо от того, что там было
+        entry.data[lx, wy, lz] = blockType;
+        entry.hp[lx, wy, lz] = (short)(blockType == -1 ? 0 : GetMaxHP(blockType));
 
         if (rebuildChunk)
         {
@@ -631,10 +674,14 @@ public class VoxelWorld : MonoBehaviour
             }
         }
         
-        // Перестраиваем затронутые чанки
+        // Перестраиваем затронутые чанки и помечаем для сохранения
         foreach (var chunkKey in affectedChunks)
         {
-            RebuildChunk(chunkKey.cx, chunkKey.cz);
+            if (_chunks.TryGetValue(chunkKey, out var entry))
+            {
+                entry.builder.Build(entry.data);
+                entry.builder.MarkDirty(); // Помечаем для автосохранения
+            }
         }
         
         return affectedChunks.Count > 0;
@@ -870,6 +917,10 @@ public class VoxelWorld : MonoBehaviour
         // 6. Вычисляем новую точку спавна
         CalculatePlayerSpawnPoint();
         Debug.Log($"VoxelWorld: Новая точка спавна: {playerSpawnPoint}");
+        
+        // 7. Принудительно сохраняем все чанки нового мира
+        Debug.Log("VoxelWorld: Сохранение новых чанков...");
+        ForceSaveAllChunks();
         
         Debug.Log("VoxelWorld: Регенерация мира завершена!");
     }
