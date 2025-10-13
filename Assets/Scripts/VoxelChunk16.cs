@@ -94,21 +94,17 @@ public class VoxelChunk16 : MonoBehaviour
         // 4. Чанк видим только если в зоне видимости И в frustum камеры
         bool shouldBeVisible = isInRange && isInFrustum;
         
-        // ДОПОЛНИТЕЛЬНАЯ ОПТИМИЗАЦИЯ: Коллайдеры только для ОЧЕНЬ близких чанков
-        // Далекие чанки = видимые но БЕЗ коллайдеров (только визуал)
-        bool needsCollider = distanceSqr <= (viewDistanceSqr * 0.4f); // Коллайдеры только в 40% зоны
-        
         // Если состояние изменилось - обновляем
         if (shouldBeVisible != isVisualizationActive)
         {
-            SetVisualizationActive(shouldBeVisible, needsCollider);
+            SetVisualizationActive(shouldBeVisible);
         }
     }
     
     /// <summary>
     /// Включить/выключить визуализацию чанка
     /// </summary>
-    void SetVisualizationActive(bool active, bool withCollider = true)
+    void SetVisualizationActive(bool active)
     {
         isVisualizationActive = active;
         
@@ -118,48 +114,7 @@ public class VoxelChunk16 : MonoBehaviour
             meshRenderer.enabled = active;
         }
         
-        // Управляем коллайдером - КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ
-        if (active && withCollider)
-        {
-            // Создаем коллайдер только когда чанк становится видимым И БЛИЗКИМ (ленивая инициализация)
-            if (_collider == null && generateCollider)
-            {
-                _collider = gameObject.GetComponent<MeshCollider>();
-                if (_collider == null)
-                {
-                    _collider = gameObject.AddComponent<MeshCollider>();
-                    // Быстрые настройки для MeshCollider
-                    _collider.cookingOptions = MeshColliderCookingOptions.CookForFasterSimulation | 
-                                               MeshColliderCookingOptions.EnableMeshCleaning |
-                                               MeshColliderCookingOptions.WeldColocatedVertices;
-                }
-            }
-            
-            // РАДИКАЛЬНАЯ ОПТИМИЗАЦИЯ: Создаем/обновляем коллайдер ТОЛЬКО при включении
-            if (_collider != null && _mesh != null && _mesh.vertexCount > 0)
-            {
-                if (_collider.sharedMesh != _mesh)
-                {
-                    _collider.sharedMesh = null;
-                    _collider.sharedMesh = _mesh;
-                }
-                _collider.enabled = true;
-            }
-        }
-        else
-        {
-            // ПОЛНОСТЬЮ выключаем коллайдер для невидимых/далеких чанков
-            if (_collider != null)
-            {
-                _collider.enabled = false;
-                
-                // РАДИКАЛЬНАЯ ОПТИМИЗАЦИЯ: Освобождаем меш коллайдера для экономии памяти Physics
-                if (_collider.sharedMesh != null)
-                {
-                    _collider.sharedMesh = null;
-                }
-            }
-        }
+        // Коллайдеры всегда активны (для физики игрока и снарядов)
     }
     
     void Update()
@@ -279,9 +234,6 @@ public class VoxelChunk16 : MonoBehaviour
             meshRenderer.material = atlasMaterial;
         }
 
-        // ЛЕНИВОЕ СОЗДАНИЕ КОЛЛАЙДЕРА: создаем только когда реально нужен
-        // Не создаем здесь - создастся при SetVisualizationActive(true)
-
         var verts = new List<Vector3>();
         var tris = new List<int>();
         var uvs = new List<Vector2>();
@@ -349,11 +301,10 @@ public class VoxelChunk16 : MonoBehaviour
                     }
                 }
 
-        _mesh.Clear();
-        
-        // Проверяем что есть хотя бы вертексы
+        // КРИТИЧНО: Проверяем что есть вертексы ДО очистки меша
         if (verts.Count > 0)
         {
+            _mesh.Clear();
             _mesh.SetVertices(verts);
             _mesh.SetTriangles(tris, 0);
             _mesh.SetUVs(0, uvs);
@@ -371,22 +322,40 @@ public class VoxelChunk16 : MonoBehaviour
             }
             #endif
 
-            // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: НЕ создаем MeshCollider при Build()
-            // Коллайдер будет создан только при включении видимости (если нужен)
-            // Это радикально уменьшает Semaphore.WaitForSignal
+            // Создаем/обновляем коллайдер только если есть вертексы
+            if (generateCollider)
+            {
+                if (_collider == null)
+                {
+                    _collider = gameObject.GetComponent<MeshCollider>();
+                    if (_collider == null)
+                    {
+                        _collider = gameObject.AddComponent<MeshCollider>();
+                        _collider.cookingOptions = MeshColliderCookingOptions.CookForFasterSimulation | 
+                                                   MeshColliderCookingOptions.EnableMeshCleaning |
+                                                   MeshColliderCookingOptions.WeldColocatedVertices;
+                    }
+                }
+                
+                _collider.sharedMesh = null;
+                _collider.sharedMesh = _mesh;
+                _collider.enabled = true;
+            }
         }
         else
         {
             // Чанк полностью заполнен или пуст - нет видимых граней
-            // Отключаем рендерер и коллайдер для экономии
+            // Отключаем рендерер для экономии
             if (meshRenderer != null)
             {
                 meshRenderer.enabled = false;
             }
+            
+            // Освобождаем коллайдер от пустого меша
             if (_collider != null)
             {
-                _collider.enabled = false;
                 _collider.sharedMesh = null;
+                _collider.enabled = false;
             }
         }
     }
