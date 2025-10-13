@@ -18,7 +18,7 @@ public class PlayerController : MonoBehaviour, ISpawnable
 
     [Header("View Distance")]
     [Tooltip("Дистанция видимости для кулинга чанков и врагов")]
-    public float viewDistance = 100f;            // Дистанция видимости (в блоках)
+    public float viewDistance = 64f;             // Дистанция видимости (в блоках) - оптимизировано для GPU
     
     [Header("Animation")]
     public Animator animator;                    // Аниматор персонажа

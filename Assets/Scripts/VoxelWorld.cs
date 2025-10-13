@@ -54,7 +54,19 @@ public class VoxelWorld : MonoBehaviour
     
     // Ссылка на игрока для кулинга чанков
     private Transform cachedPlayerTransform;
+    private PlayerController cachedPlayerController; // Кеш для избежания GetComponent каждый кадр
     public Transform PlayerTransform => cachedPlayerTransform;
+    
+    // Централизованная система кулинга
+    private List<VoxelChunk16> chunkList = new List<VoxelChunk16>(); // Список для итерации
+    private int currentCullingIndex = 0;
+    private int chunksToCheckPerFrame = 10; // Проверяем 10 чанков за кадр (быстрее реакция кулинга)
+    private Camera mainCamera; // Кеш главной камеры
+    
+    // Статистика для отладки
+    #if UNITY_EDITOR
+    private float nextStatsLogTime = 0f;
+    #endif
 
     void Awake()
     {
@@ -69,6 +81,55 @@ public class VoxelWorld : MonoBehaviour
     private void Start()
     {
         StartCoroutine(InitializeWorld());
+    }
+    
+    void Update()
+    {
+        // Кешируем камеру если нужно
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+        }
+        
+        // Централизованная проверка кулинга чанков
+        if (cachedPlayerController != null && chunkList.Count > 0 && mainCamera != null)
+        {
+            Vector3 playerPos = cachedPlayerTransform.position;
+            float viewDistanceSqr = cachedPlayerController.viewDistance * cachedPlayerController.viewDistance * 2.25f; // 1.5^2 = 2.25 (буфер)
+            
+            // Вычисляем frustum planes ОДИН РАЗ за кадр
+            Plane[] frustumPlanes = GeometryUtility.CalculateFrustumPlanes(mainCamera);
+            
+            // Проверяем N чанков за кадр
+            for (int i = 0; i < chunksToCheckPerFrame && chunkList.Count > 0; i++)
+            {
+                if (currentCullingIndex >= chunkList.Count)
+                    currentCullingIndex = 0;
+                
+                VoxelChunk16 chunk = chunkList[currentCullingIndex];
+                if (chunk != null)
+                {
+                    chunk.CheckCullingCentralized(playerPos, viewDistanceSqr, frustumPlanes);
+                }
+                
+                currentCullingIndex++;
+            }
+            
+            // Debug статистика раз в 3 секунды
+            #if UNITY_EDITOR
+            if (Time.time >= nextStatsLogTime)
+            {
+                int activeChunks = 0;
+                foreach (var chunk in chunkList)
+                {
+                    if (chunk != null && chunk.GetComponent<MeshRenderer>().enabled)
+                        activeChunks++;
+                }
+                Debug.Log($"VoxelWorld Stats: {activeChunks}/{chunkList.Count} чанков видимы");
+                nextStatsLogTime = Time.time + 3f;
+            }
+            #endif
+        }
     }
 
     /// <summary>
@@ -146,6 +207,7 @@ public class VoxelWorld : MonoBehaviour
             DestroyImmediate(transform.GetChild(i).gameObject);
         }
         _chunks.Clear();
+        chunkList.Clear();
         
         if (generator == null)
             generator = GetComponent<VoxelWorldGenerator>() ?? gameObject.AddComponent<VoxelWorldGenerator>();
@@ -285,10 +347,10 @@ public class VoxelWorld : MonoBehaviour
             go = go
         };
         
-        // Устанавливаем игрока для кулинга (если есть)
-        if (cachedPlayerTransform != null)
+        // Добавляем в список для централизованного кулинга
+        if (!chunkList.Contains(builder))
         {
-            builder.SetPlayer(cachedPlayerTransform);
+            chunkList.Add(builder);
         }
     }
     
@@ -400,6 +462,7 @@ public class VoxelWorld : MonoBehaviour
             DestroyImmediate(transform.GetChild(i).gameObject);
         }
         _chunks.Clear();
+        chunkList.Clear();
         
         int totalChunks = chunksX * chunksZ;
         int processedChunks = 0;
@@ -621,10 +684,10 @@ public class VoxelWorld : MonoBehaviour
             go = go
         };
         
-        // Устанавливаем игрока для кулинга (если есть)
-        if (cachedPlayerTransform != null)
+        // Добавляем в список для централизованного кулинга
+        if (!chunkList.Contains(builder))
         {
-            builder.SetPlayer(cachedPlayerTransform);
+            chunkList.Add(builder);
         }
     }
 
@@ -756,6 +819,9 @@ public class VoxelWorld : MonoBehaviour
             entry.data[lx, y, lz] = AIR;
             entry.builder.Build(entry.data);
             entry.builder.MarkDirty();
+            
+            // Обновляем соседние чанки если блок на границе
+            UpdateNeighborChunksIfOnEdge(lx, lz, cxi, czi);
         }
         else
         {
@@ -788,6 +854,9 @@ public class VoxelWorld : MonoBehaviour
         {
             entry.builder.Build(entry.data);
             entry.builder.MarkDirty();
+            
+            // Обновляем соседние чанки если блок на границе
+            UpdateNeighborChunksIfOnEdge(lx, lz, cxi, czi);
         }
         return true;
     }
@@ -889,17 +958,49 @@ public class VoxelWorld : MonoBehaviour
     public void SetPlayer(Transform playerTransform)
     {
         cachedPlayerTransform = playerTransform;
+        cachedPlayerController = playerTransform?.GetComponent<PlayerController>(); // Кешируем PlayerController
+        Debug.Log($"VoxelWorld: Игрок установлен. Централизованный кулинг активирован для {chunkList.Count} чанков");
+    }
+    
+    // === Приватный метод для обновления соседних чанков если блок на границе ===
+    private void UpdateNeighborChunksIfOnEdge(int lx, int lz, int chunkX, int chunkZ)
+    {
+        // ОПТИМИЗАЦИЯ: Вместо немедленного Build() помечаем соседей для отложенного rebuild
+        // Debounce 300ms - если много изменений, перестроится только раз
         
-        // Применяем игрока ко всем существующим чанкам
-        foreach (var entry in _chunks.Values)
+        // X = 0 (левая граница) - помечаем чанк слева
+        if (lx == 0 && chunkX > 0)
         {
-            if (entry.builder != null)
+            if (_chunks.TryGetValue((chunkX - 1, chunkZ), out var leftChunk))
             {
-                entry.builder.SetPlayer(playerTransform);
+                leftChunk.builder.MarkNeedsRebuild();
+            }
+        }
+        // X = WIDTH-1 (правая граница) - помечаем чанк справа
+        if (lx == VoxelChunk16.WIDTH - 1 && chunkX < chunksX - 1)
+        {
+            if (_chunks.TryGetValue((chunkX + 1, chunkZ), out var rightChunk))
+            {
+                rightChunk.builder.MarkNeedsRebuild();
             }
         }
         
-        Debug.Log($"VoxelWorld: Игрок установлен для {_chunks.Count} чанков (кулинг активирован)");
+        // Z = 0 (нижняя граница) - помечаем чанк снизу
+        if (lz == 0 && chunkZ > 0)
+        {
+            if (_chunks.TryGetValue((chunkX, chunkZ - 1), out var bottomChunk))
+            {
+                bottomChunk.builder.MarkNeedsRebuild();
+            }
+        }
+        // Z = DEPTH-1 (верхняя граница) - помечаем чанк сверху
+        if (lz == VoxelChunk16.DEPTH - 1 && chunkZ < chunksZ - 1)
+        {
+            if (_chunks.TryGetValue((chunkX, chunkZ + 1), out var topChunk))
+            {
+                topChunk.builder.MarkNeedsRebuild();
+            }
+        }
     }
     
     // === Публичный метод для получения типа блока ===

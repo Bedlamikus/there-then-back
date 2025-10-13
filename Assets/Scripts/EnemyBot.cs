@@ -86,26 +86,29 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     /// <summary>
     /// Проверка дистанции до игрока и деспавн если слишком далеко
+    /// Использует КВАДРАТ расстояния для оптимизации (без Mathf.Sqrt)
     /// </summary>
     void CheckCulling()
     {
         if (target == null || playerController == null)
             return;
         
-        // Вычисляем расстояние только по XZ (горизонтали)
-        float distanceXZ = Vector2.Distance(
-            new Vector2(transform.position.x, transform.position.z),
-            new Vector2(target.position.x, target.position.z)
-        );
+        // Вычисляем КВАДРАТ расстояния БЕЗ Mathf.Sqrt (быстрее!)
+        Vector3 pos = transform.position;
+        Vector3 targetPos = target.position;
+        
+        float dx = pos.x - targetPos.x;
+        float dz = pos.z - targetPos.z;
+        float distanceSqr = dx * dx + dz * dz;
         
         // Враги деспавнятся на расстоянии = viewDistance
         // Чанки исчезают на viewDistance * 1.5
-        // Таким образом враг всегда деспавнится раньше чем под ним исчезнет чанк
-        float despawnDistance = playerController.viewDistance;
+        // Сравниваем квадраты расстояний
+        float despawnDistanceSqr = playerController.viewDistance * playerController.viewDistance;
         
-        if (distanceXZ > despawnDistance)
+        if (distanceSqr > despawnDistanceSqr)
         {
-            Debug.Log($"[Bot] Бот {botID} слишком далеко от игрока ({distanceXZ:F1}m > {despawnDistance:F1}m), деспавн");
+            // Убрали Debug.Log чтобы не создавать строки (GC)
             Destroy(gameObject);
         }
     }

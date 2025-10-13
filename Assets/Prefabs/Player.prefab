@@ -645,6 +645,7 @@ MonoBehaviour:
   gravity: -9.8
   coyoteTime: 0.1
   groundCheckDistance: 0.2
+  viewDistance: 50
   animator: {fileID: 2291471727943478165}
   speedParameter: Speed
   isGroundedParameter: IsGrounded

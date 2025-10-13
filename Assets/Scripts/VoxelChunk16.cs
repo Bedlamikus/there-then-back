@@ -33,12 +33,17 @@ public class VoxelChunk16 : MonoBehaviour
     public int chunkX { get; private set; }
     public int chunkZ { get; private set; }
     
+    // ===== система отложенного rebuild =====
+    private bool needsRebuild = false;         // Нужно ли перестроить меш
+    private float rebuildMarkTime = 0f;        // Время когда помечен для rebuild
+    private const float REBUILD_DELAY = 0.3f;  // Задержка перед rebuild (300ms debounce)
+    
     // ===== система кулинга =====
-    private Transform playerTransform;         // Ссылка на игрока
-    private PlayerController playerController; // Для получения viewDistance
-    private float nextCullingCheckTime = 0f;   // Время следующей проверки
     private bool isVisualizationActive = true; // Текущее состояние визуализации
     private MeshRenderer meshRenderer;         // Для включения/выключения
+    
+    // ===== для проверки соседних чанков =====
+    private VoxelWorld voxelWorld;
 
     // подготовленные UV-координаты (кеш на каждый tileIndex)
     static readonly Dictionary<int, Vector2[]> uvCache = new();
@@ -59,56 +64,51 @@ public class VoxelChunk16 : MonoBehaviour
         
         // Кешируем MeshRenderer
         meshRenderer = GetComponent<MeshRenderer>();
+        
+        // Кешируем VoxelWorld для проверки соседних чанков
+        voxelWorld = VoxelWorld.Instance;
     }
     
     /// <summary>
-    /// Установить игрока для системы кулинга
+    /// Централизованная проверка дистанции и видимости камерой (вызывается из VoxelWorld)
+    /// Использует КВАДРАТ расстояния для оптимизации (без Mathf.Sqrt)
     /// </summary>
-    public void SetPlayer(Transform player)
+    public void CheckCullingCentralized(Vector3 playerPos, float viewDistanceSqr, Plane[] frustumPlanes)
     {
-        if (player != null)
+        // 1. Вычисляем КВАДРАТ расстояния БЕЗ Mathf.Sqrt (быстрее!)
+        Vector3 pos = transform.position;
+        float dx = (pos.x + WIDTH * 0.5f) - playerPos.x;
+        float dz = (pos.z + DEPTH * 0.5f) - playerPos.z;
+        float distanceSqr = dx * dx + dz * dz;
+        
+        // 2. Проверка дистанции
+        bool isInRange = distanceSqr <= viewDistanceSqr;
+        
+        // 3. Проверка видимости камерой (Frustum Culling)
+        bool isInFrustum = false;
+        if (isInRange && meshRenderer != null)
         {
-            playerTransform = player;
-            playerController = player.GetComponent<PlayerController>();
-            
-            // Первая проверка дистанции со случайной задержкой
-            nextCullingCheckTime = Time.time + Random.Range(0f, 2f);
+            isInFrustum = GeometryUtility.TestPlanesAABB(frustumPlanes, meshRenderer.bounds);
         }
-    }
-    
-    /// <summary>
-    /// Проверка дистанции и управление визуализацией
-    /// </summary>
-    void CheckCulling()
-    {
-        if (playerTransform == null || playerController == null)
-            return;
         
-        // Вычисляем расстояние только по XZ (горизонтали)
-        Vector3 chunkCenter = transform.position + new Vector3(WIDTH * 0.5f, 0, DEPTH * 0.5f);
-        Vector3 playerPos = playerTransform.position;
+        // 4. Чанк видим только если в зоне видимости И в frustum камеры
+        bool shouldBeVisible = isInRange && isInFrustum;
         
-        float distanceXZ = Vector2.Distance(
-            new Vector2(chunkCenter.x, chunkCenter.z),
-            new Vector2(playerPos.x, playerPos.z)
-        );
-        
-        // Определяем нужно ли показывать чанк
-        // Добавляем буфер +50% чтобы чанки исчезали позже чем враги деспавнятся
-        float chunkCullingDistance = playerController.viewDistance * 1.5f;
-        bool shouldBeVisible = distanceXZ <= chunkCullingDistance;
+        // ДОПОЛНИТЕЛЬНАЯ ОПТИМИЗАЦИЯ: Коллайдеры только для ОЧЕНЬ близких чанков
+        // Далекие чанки = видимые но БЕЗ коллайдеров (только визуал)
+        bool needsCollider = distanceSqr <= (viewDistanceSqr * 0.4f); // Коллайдеры только в 40% зоны
         
         // Если состояние изменилось - обновляем
         if (shouldBeVisible != isVisualizationActive)
         {
-            SetVisualizationActive(shouldBeVisible);
+            SetVisualizationActive(shouldBeVisible, needsCollider);
         }
     }
     
     /// <summary>
     /// Включить/выключить визуализацию чанка
     /// </summary>
-    void SetVisualizationActive(bool active)
+    void SetVisualizationActive(bool active, bool withCollider = true)
     {
         isVisualizationActive = active;
         
@@ -118,28 +118,69 @@ public class VoxelChunk16 : MonoBehaviour
             meshRenderer.enabled = active;
         }
         
-        // Включаем/выключаем коллайдер
-        if (_collider != null)
+        // Управляем коллайдером - КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ
+        if (active && withCollider)
         {
-            _collider.enabled = active;
+            // Создаем коллайдер только когда чанк становится видимым И БЛИЗКИМ (ленивая инициализация)
+            if (_collider == null && generateCollider)
+            {
+                _collider = gameObject.GetComponent<MeshCollider>();
+                if (_collider == null)
+                {
+                    _collider = gameObject.AddComponent<MeshCollider>();
+                    // Быстрые настройки для MeshCollider
+                    _collider.cookingOptions = MeshColliderCookingOptions.CookForFasterSimulation | 
+                                               MeshColliderCookingOptions.EnableMeshCleaning |
+                                               MeshColliderCookingOptions.WeldColocatedVertices;
+                }
+            }
+            
+            // РАДИКАЛЬНАЯ ОПТИМИЗАЦИЯ: Создаем/обновляем коллайдер ТОЛЬКО при включении
+            if (_collider != null && _mesh != null && _mesh.vertexCount > 0)
+            {
+                if (_collider.sharedMesh != _mesh)
+                {
+                    _collider.sharedMesh = null;
+                    _collider.sharedMesh = _mesh;
+                }
+                _collider.enabled = true;
+            }
+        }
+        else
+        {
+            // ПОЛНОСТЬЮ выключаем коллайдер для невидимых/далеких чанков
+            if (_collider != null)
+            {
+                _collider.enabled = false;
+                
+                // РАДИКАЛЬНАЯ ОПТИМИЗАЦИЯ: Освобождаем меш коллайдера для экономии памяти Physics
+                if (_collider.sharedMesh != null)
+                {
+                    _collider.sharedMesh = null;
+                }
+            }
         }
     }
     
     void Update()
     {
+        // Отложенный rebuild: проверяем прошло ли 300ms с момента пометки
+        if (needsRebuild && Time.time - rebuildMarkTime >= REBUILD_DELAY)
+        {
+            if (cachedData != null)
+            {
+                Build(cachedData);
+            }
+            needsRebuild = false;
+        }
+        
         // Автосохранение: проверяем прошло ли 5 секунд с момента изменения
         if (isDirty && Time.time - dirtyMarkTime >= SAVE_DELAY)
         {
             SaveChunk();
         }
         
-        // Кулинг: проверяем дистанцию до игрока раз в ~10 секунд
-        if (Time.time >= nextCullingCheckTime)
-        {
-            CheckCulling();
-            // Следующая проверка через 10 +- 2 секунды (рандом для распределения нагрузки)
-            nextCullingCheckTime = Time.time + Random.Range(8f, 12f);
-        }
+        // Кулинг теперь централизован в VoxelWorld.Update()
     }
     
     void OnDestroy()
@@ -204,6 +245,18 @@ public class VoxelChunk16 : MonoBehaviour
             //Debug.Log($"Chunk ({chunkX}, {chunkZ}) помечен как измененный, автосохранение через 5 секунд");
         }
     }
+    
+    /// <summary>
+    /// Пометить чанк для отложенного rebuild (debounce)
+    /// </summary>
+    public void MarkNeedsRebuild()
+    {
+        if (!needsRebuild)
+        {
+            needsRebuild = true;
+            rebuildMarkTime = Time.time;
+        }
+    }
 
     public void Build(int[,,] data)
     {
@@ -213,16 +266,21 @@ public class VoxelChunk16 : MonoBehaviour
         if (_mesh == null)
         {
             _mesh = new Mesh();
+            _mesh.name = $"ChunkMesh_{chunkX}_{chunkZ}";
             _mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            _mesh.MarkDynamic(); // ОПТИМИЗАЦИЯ: помечаем меш как динамический для быстрых обновлений
             GetComponent<MeshFilter>().mesh = _mesh;
-            GetComponent<MeshRenderer>().material = atlasMaterial;
+            
+            // Кешируем MeshRenderer при первом создании меша
+            if (meshRenderer == null)
+            {
+                meshRenderer = GetComponent<MeshRenderer>();
+            }
+            meshRenderer.material = atlasMaterial;
         }
 
-        if (_collider == null && generateCollider)
-        {
-            _collider = gameObject.GetComponent<MeshCollider>();
-            if (_collider == null) _collider = gameObject.AddComponent<MeshCollider>();
-        }
+        // ЛЕНИВОЕ СОЗДАНИЕ КОЛЛАЙДЕРА: создаем только когда реально нужен
+        // Не создаем здесь - создастся при SetVisualizationActive(true)
 
         var verts = new List<Vector3>();
         var tris = new List<int>();
@@ -234,6 +292,13 @@ public class VoxelChunk16 : MonoBehaviour
                 {
                     int type = data[x, y, z];
                     if (type == -1) continue;
+                    
+                    // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Проверяем есть ли хотя бы одна видимая грань
+                    // Если блок полностью окружен - пропускаем его
+                    if (IsFullyEnclosed(x, y, z, data))
+                    {
+                        continue; // Блок полностью скрыт - не рендерим
+                    }
 
                     // --- здесь решаем индекс тайла (с учётом повреждений) ---
                     int tileIndex = GetTileIndexWithDamage(type, x, y, z);
@@ -246,11 +311,23 @@ public class VoxelChunk16 : MonoBehaviour
                         int ny = y + dir.y;
                         int nz = z + dir.z;
 
-                        bool neighborSolid =
-                            nx >= 0 && nx < WIDTH &&
-                            ny >= 0 && ny < HEIGHT &&
-                            nz >= 0 && nz < DEPTH &&
-                            data[nx, ny, nz] != -1;
+                        bool neighborSolid = false;
+                        
+                        // Проверяем соседа внутри чанка
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT && nz >= 0 && nz < DEPTH)
+                        {
+                            neighborSolid = data[nx, ny, nz] != -1;
+                        }
+                        // Сосед за границей чанка - проверяем соседний чанк
+                        else if (voxelWorld != null)
+                        {
+                            // Мировые координаты соседнего блока
+                            int worldX = chunkX * WIDTH + nx;
+                            int worldY = ny;
+                            int worldZ = chunkZ * DEPTH + nz;
+                            
+                            neighborSolid = voxelWorld.HasBlockAt(worldX, worldY, worldZ);
+                        }
 
                         if (!neighborSolid)
                         {
@@ -273,19 +350,93 @@ public class VoxelChunk16 : MonoBehaviour
                 }
 
         _mesh.Clear();
-        _mesh.SetVertices(verts);
-        _mesh.SetTriangles(tris, 0);
-        _mesh.SetUVs(0, uvs);
-        _mesh.RecalculateNormals();
-
-        if (generateCollider && _collider != null)
+        
+        // Проверяем что есть хотя бы вертексы
+        if (verts.Count > 0)
         {
-            _collider.sharedMesh = null;
-            _collider.sharedMesh = _mesh;
+            _mesh.SetVertices(verts);
+            _mesh.SetTriangles(tris, 0);
+            _mesh.SetUVs(0, uvs);
+            
+            // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Не пересчитываем нормали каждый раз
+            // Для воксельного мира с прямыми гранями нормали всегда одинаковые
+            _mesh.RecalculateNormals(UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds | 
+                                     UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices);
+            
+            // Debug статистика (можно закомментировать в продакшене)
+            #if UNITY_EDITOR
+            if (verts.Count > 20000)
+            {
+                Debug.LogWarning($"Chunk ({chunkX},{chunkZ}): {verts.Count} verts, {tris.Count/3} tris - критично много!");
+            }
+            #endif
+
+            // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: НЕ создаем MeshCollider при Build()
+            // Коллайдер будет создан только при включении видимости (если нужен)
+            // Это радикально уменьшает Semaphore.WaitForSignal
+        }
+        else
+        {
+            // Чанк полностью заполнен или пуст - нет видимых граней
+            // Отключаем рендерер и коллайдер для экономии
+            if (meshRenderer != null)
+            {
+                meshRenderer.enabled = false;
+            }
+            if (_collider != null)
+            {
+                _collider.enabled = false;
+                _collider.sharedMesh = null;
+            }
         }
     }
 
     // ===== Helpers =====
+    
+    /// <summary>
+    /// КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Проверяет окружен ли блок со всех сторон
+    /// Если блок полностью окружен - его грани не видны, можно не рендерить
+    /// </summary>
+    bool IsFullyEnclosed(int x, int y, int z, int[,,] data)
+    {
+        // Проверяем все 6 направлений
+        for (int face = 0; face < 6; face++)
+        {
+            Vector3Int dir = VoxelData.dirs[face];
+            int nx = x + dir.x;
+            int ny = y + dir.y;
+            int nz = z + dir.z;
+            
+            // Проверяем внутри чанка
+            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT && nz >= 0 && nz < DEPTH)
+            {
+                if (data[nx, ny, nz] == -1) // Воздух рядом
+                {
+                    return false; // Есть видимая грань
+                }
+            }
+            // На границе чанка - проверяем соседний чанк
+            else if (voxelWorld != null)
+            {
+                int worldX = chunkX * WIDTH + nx;
+                int worldY = ny;
+                int worldZ = chunkZ * DEPTH + nz;
+                
+                if (!voxelWorld.HasBlockAt(worldX, worldY, worldZ))
+                {
+                    return false; // Есть видимая грань
+                }
+            }
+            else
+            {
+                // Если нет VoxelWorld - считаем что за границей воздух
+                return false;
+            }
+        }
+        
+        // Все 6 сторон закрыты - блок не виден
+        return true;
+    }
 
     int GetTileIndexWithDamage(int type, int x, int y, int z)
     {

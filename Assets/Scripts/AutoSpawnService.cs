@@ -16,9 +16,11 @@ public class AutoSpawnService
         public Vector3 startPosition;
         public float lastSaveTime;
         public bool hasValidSavePosition;
+        public bool isPlayer; // Флаг для быстрой проверки БЕЗ GetComponent или GetSpawnableID
     }
     
     private Dictionary<string, SpawnableData> spawnables = new Dictionary<string, SpawnableData>();
+    private Dictionary<ISpawnable, SpawnableData> spawnablesCache = new Dictionary<ISpawnable, SpawnableData>(); // Кеш для O(1) доступа БЕЗ строк
     private VoxelWorld voxelWorld;
     private bool isWaitingForVoxelWorld = false;
     private float lastVoxelWorldCheckTime = 0f;
@@ -93,10 +95,12 @@ public class AutoSpawnService
             startPosition = startPosition,
             lastSavedPosition = startPosition,
             hasValidSavePosition = true,
-            lastSaveTime = Time.time
+            lastSaveTime = Time.time,
+            isPlayer = (id == "Player") // Сохраняем флаг для быстрой проверки
         };
         
         spawnables[id] = data;
+        spawnablesCache[spawnable] = data; // Добавляем в кеш для быстрого доступа БЕЗ аллокации строк
         
         string prefix = id == "Player" ? "[Player]" : "[Bot]";
         //
@@ -111,7 +115,7 @@ public class AutoSpawnService
         
         if (spawnables.Remove(id))
         {
-            
+            spawnablesCache.Remove(spawnable); // Удаляем из кеша
         }
     }
     
@@ -159,11 +163,9 @@ public class AutoSpawnService
             return; // Объект уничтожен, пропускаем
         }
         
-        string id = spawnable.GetSpawnableID();
-        
-        if (!spawnables.TryGetValue(id, out var data))
+        // ОПТИМИЗАЦИЯ: Используем кеш для O(1) доступа БЕЗ создания строк
+        if (!spawnablesCache.TryGetValue(spawnable, out var data))
         {
-            
             return;
         }
         
@@ -179,7 +181,8 @@ public class AutoSpawnService
         }
         
         // Если это игрок и мир готов, но мы еще не переместили игрока на точку спавна
-        if (id == "Player" && !hasMovedPlayerToSpawn && voxelWorld != null && voxelWorld.IsWorldReady)
+        // Проверяем по флагу БЕЗ аллокаций
+        if (data.isPlayer && !hasMovedPlayerToSpawn && voxelWorld != null && voxelWorld.IsWorldReady)
         {
             Vector3 worldSpawnPoint = voxelWorld.PlayerSpawnPoint;
             if (worldSpawnPoint != Vector3.zero)
@@ -547,7 +550,7 @@ public class AutoSpawnService
     
     private void ResetWorld()
     {
-        
+        spawnablesCache.Clear(); // Очищаем кеш
         
         // Находим игрока
         if (!spawnables.TryGetValue("Player", out var playerData))
