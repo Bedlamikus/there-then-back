@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Collections;
 
 /// <summary>
 /// Пул аудио источников для переиспользования звуков взрывов
@@ -28,12 +29,6 @@ public class AudioPool
     [Tooltip("Базовый тон звука")]
     [Range(0.1f, 3f)]
     public float basePitch = 1f;
-    
-    [Tooltip("Максимальное расстояние слышимости")]
-    public float maxDistance = 50f;
-    
-    [Tooltip("Минимальное расстояние для полной громкости")]
-    public float minDistance = 1f;
     
     // Приватные переменные
     private List<AudioSource> audioSources = new List<AudioSource>();
@@ -73,10 +68,7 @@ public class AudioPool
         audioSource.clip = explosionSound;
         audioSource.volume = volume;
         audioSource.pitch = basePitch;
-        audioSource.maxDistance = maxDistance;
-        audioSource.minDistance = minDistance;
-        audioSource.spatialBlend = 1f; // 3D звук
-        audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+        audioSource.spatialBlend = 1f; // 3D звук для позиционирования
         audioSource.playOnAwake = false;
         audioSource.loop = false;
         
@@ -92,6 +84,8 @@ public class AudioPool
     /// </summary>
     public void PlayAt(Vector3 position)
     {
+        Debug.Log($"[AudioPool] PlayAt called for {projectileType} at {position}");
+        
         if (explosionSound == null)
         {
             Debug.LogWarning($"[AudioPool] No explosion sound assigned for {projectileType}");
@@ -106,6 +100,15 @@ public class AudioPool
             return;
         }
         
+        Debug.Log($"[AudioPool] Found audio source: {audioSource.name}, Active: {audioSource.gameObject.activeInHierarchy}");
+        
+        // Активируем GameObject если он деактивирован
+        if (!audioSource.gameObject.activeInHierarchy)
+        {
+            Debug.Log($"[AudioPool] Activating GameObject: {audioSource.name}");
+            audioSource.gameObject.SetActive(true);
+        }
+        
         // Настраиваем позицию и параметры
         audioSource.transform.position = position;
         
@@ -113,10 +116,13 @@ public class AudioPool
         float randomPitch = basePitch + Random.Range(-pitchVariation, pitchVariation);
         audioSource.pitch = Mathf.Clamp(randomPitch, 0.1f, 3f);
         
+        Debug.Log($"[AudioPool] AudioSource settings - Volume: {audioSource.volume}, Pitch: {audioSource.pitch}, SpatialBlend: {audioSource.spatialBlend}");
+        Debug.Log($"[AudioPool] AudioClip: {(audioSource.clip != null ? audioSource.clip.name : "NULL")}");
+        
         // Проигрываем звук
         audioSource.Play();
         
-        Debug.Log($"[AudioPool] Playing {projectileType} explosion sound at {position}");
+        Debug.Log($"[AudioPool] ✅ PLAY() CALLED! Clip: {(audioSource.clip != null ? audioSource.clip.name : "NULL")}");
     }
     
     /// <summary>
@@ -124,25 +130,23 @@ public class AudioPool
     /// </summary>
     private AudioSource GetAvailableSource()
     {
+        Debug.Log($"[AudioPool] GetAvailableSource called for {projectileType}, Total sources: {audioSources.Count}");
+        
         // Ищем неактивный источник
         foreach (AudioSource source in audioSources)
         {
-            if (!source.isPlaying && !source.gameObject.activeInHierarchy)
+            Debug.Log($"[AudioPool] Checking source: {source.name}, IsPlaying: {source.isPlaying}, Active: {source.gameObject.activeInHierarchy}");
+            
+            if (!source.isPlaying)
             {
-                source.gameObject.SetActive(true);
+                Debug.Log($"[AudioPool] Found available source: {source.name}");
                 return source;
             }
         }
         
-        // Если все источники заняты, возвращаем первый доступный из очереди
-        if (availableSources.Count > 0)
-        {
-            AudioSource source = availableSources.Dequeue();
-            source.gameObject.SetActive(true);
-            return source;
-        }
-        
-        return null;
+        // Если все источники заняты, возвращаем первый (перезаписываем)
+        Debug.LogWarning($"[AudioPool] All sources busy, using first source: {audioSources[0].name}");
+        return audioSources[0];
     }
     
     /// <summary>

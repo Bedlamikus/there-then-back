@@ -921,7 +921,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   audioPools:
-  - projectileType: 0
+  - projectileType: 4
     explosionSound: {fileID: 8300000, guid: 02a7cc77533d2dc449ab1dd3b44a22f8, type: 3}
     poolSize: 13
     volume: 1
@@ -929,7 +929,23 @@ MonoBehaviour:
     basePitch: 1
     maxDistance: 20
     minDistance: 0
-  - projectileType: 1
+  - projectileType: 8
+    explosionSound: {fileID: 8300000, guid: 02a7cc77533d2dc449ab1dd3b44a22f8, type: 3}
+    poolSize: 13
+    volume: 1
+    pitchVariation: 0
+    basePitch: 1
+    maxDistance: 20
+    minDistance: 0
+  - projectileType: 5
+    explosionSound: {fileID: 8300000, guid: 02a7cc77533d2dc449ab1dd3b44a22f8, type: 3}
+    poolSize: 13
+    volume: 1
+    pitchVariation: 0
+    basePitch: 1
+    maxDistance: 20
+    minDistance: 0
+  - projectileType: 9
     explosionSound: {fileID: 8300000, guid: 1fe2f0ea93c33c84f897da6087752cac, type: 3}
     poolSize: 13
     volume: 1
@@ -937,7 +953,15 @@ MonoBehaviour:
     basePitch: 1
     maxDistance: 20
     minDistance: 0
-  - projectileType: 2
+  - projectileType: 6
+    explosionSound: {fileID: 8300000, guid: 02a7cc77533d2dc449ab1dd3b44a22f8, type: 3}
+    poolSize: 13
+    volume: 1
+    pitchVariation: 0
+    basePitch: 1
+    maxDistance: 20
+    minDistance: 0
+  - projectileType: 10
     explosionSound: {fileID: 8300000, guid: 1fe2f0ea93c33c84f897da6087752cac, type: 3}
     poolSize: 13
     volume: 1
@@ -945,15 +969,15 @@ MonoBehaviour:
     basePitch: 1
     maxDistance: 20
     minDistance: 0
-  - projectileType: 3
-    explosionSound: {fileID: 8300000, guid: 20de1bd82efff9243b181a98e813b245, type: 3}
+  - projectileType: 7
+    explosionSound: {fileID: 8300000, guid: 02a7cc77533d2dc449ab1dd3b44a22f8, type: 3}
     poolSize: 13
     volume: 1
     pitchVariation: 0
     basePitch: 1
     maxDistance: 20
     minDistance: 0
-  - projectileType: 4
+  - projectileType: 11
     explosionSound: {fileID: 8300000, guid: 20de1bd82efff9243b181a98e813b245, type: 3}
     poolSize: 13
     volume: 1
