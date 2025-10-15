@@ -26,6 +26,9 @@ public class GlobalEvents
     // Particle Effects Events
     public static UnityEvent<Vector3, ProjectileType> ProjectileExploded = new();  // (explosion position, projectile type)
     
+    // Audio Events
+    public static UnityEvent<Vector3, ProjectileType> WeaponFired = new();  // (fire position, projectile type)
+    
     // Camera Effects Events
     public static UnityEvent<Vector3> CameraShake = new();  // (explosion position)
 }

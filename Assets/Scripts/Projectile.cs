@@ -97,6 +97,49 @@ public class Projectile : MonoBehaviour
         
         // Запускаем корутину для разрешения столкновений с игроком через задержку
         StartCoroutine(EnablePlayerCollisionAfterDelay());
+        
+        // Вызываем событие звука выстрела
+        GlobalEvents.WeaponFired?.Invoke(transform.position, GetShootSoundType());
+    }
+    
+    /// <summary>
+    /// Получает тип звука выстрела на основе типа снаряда
+    /// </summary>
+    ProjectileType GetShootSoundType()
+    {
+        switch (projectileType)
+        {
+            case ProjectileType.Pistol:
+                return ProjectileType.ShootPistol;
+            case ProjectileType.Rocket:
+                return ProjectileType.ShootRocket;
+            case ProjectileType.Dinamit:
+                return ProjectileType.ShootDinamit;
+            case ProjectileType.Rock:
+                return ProjectileType.ShootRock;
+            default:
+                return ProjectileType.ShootPistol; // По умолчанию
+        }
+    }
+    
+    /// <summary>
+    /// Получает тип звука взрыва на основе типа снаряда
+    /// </summary>
+    ProjectileType GetExplosionSoundType()
+    {
+        switch (projectileType)
+        {
+            case ProjectileType.Pistol:
+                return ProjectileType.ExplosionPistol;
+            case ProjectileType.Rocket:
+                return ProjectileType.ExplosionRocket;
+            case ProjectileType.Dinamit:
+                return ProjectileType.ExplosionDinamit;
+            case ProjectileType.Rock:
+                return ProjectileType.ExplosionRock;
+            default:
+                return ProjectileType.ExplosionPistol; // По умолчанию
+        }
     }
     
     /// <summary>
@@ -261,6 +304,9 @@ public class Projectile : MonoBehaviour
         
         // Вызываем событие взрыва для проигрывания партиклов
         GlobalEvents.ProjectileExploded?.Invoke(hitPoint, projectileType);
+        
+        // Вызываем событие звука взрыва
+        GlobalEvents.WeaponFired?.Invoke(hitPoint, GetExplosionSoundType());
         
         // Вызываем событие встряски камеры (если включена)
         if (cameraShake)
