@@ -1,5 +1,6 @@
 using UnityEngine;
 using Cinemachine;
+using System.Collections;
 
 public class CameraController : MonoBehaviour
 {
@@ -34,6 +35,16 @@ public class CameraController : MonoBehaviour
     public float aimRaycastDistance = 100f;         // Максимальная дистанция рейкаста для прицеливания
     public LayerMask aimLayerMask = -1;             // Слои для рейкаста прицеливания
 
+    [Header("Camera Shake")]
+    [Tooltip("Максимальная сила встряски")]
+    public float maxShakeIntensity = 0.5f;
+    
+    [Tooltip("Длительность встряски (секунды)")]
+    public float shakeDuration = 0.3f;
+    
+    [Tooltip("Радиус встряски камеры (квадратичное расстояние)")]
+    public float cameraShakeRadius = 100f; // 10f * 10f = 100f
+
     [Header("Joystick Input")]
     public FloatingJoystick cameraJoystick;        // Джойстик для управления камерой
 
@@ -47,6 +58,11 @@ public class CameraController : MonoBehaviour
     private bool isMovingTowardsPlayer = false;     // Флаг движения к игроку
     private bool isReturningToMaxDistance = false;  // Флаг возврата к максимальному расстоянию
     private bool hasObstacleBehind = false;         // Флаг наличия препятствия за камерой
+    
+    // Переменные для встряски камеры
+    private Vector3 shakeOffset = Vector3.zero;        // Текущее смещение от встряски
+    private bool isShaking = false;                    // Флаг активной встряски
+    private Coroutine shakeCoroutine;                  // Корутина встряски
 
     void Start()
     {
@@ -66,6 +82,9 @@ public class CameraController : MonoBehaviour
 
         // Инициализируем начальное смещение камеры
         InitializeCameraPosition();
+        
+        // Подписываемся на событие встряски камеры
+        GlobalEvents.CameraShake.AddListener(OnCameraShake);
     }
 
     void Update()
@@ -135,9 +154,10 @@ public class CameraController : MonoBehaviour
         // Применяем новую логику коллизий
         Vector3 finalPosition = CheckCameraCollision(desiredPosition);
 
-        // Плавно перемещаем камеру
+        // Плавно перемещаем камеру с учетом встряски
         Transform cameraTransform = virtualCamera.transform;
-        cameraTransform.position = Vector3.Lerp(cameraTransform.position, finalPosition, smoothingFactor * Time.deltaTime);
+        Vector3 targetPosition = finalPosition + shakeOffset; // Добавляем смещение от встряски
+        cameraTransform.position = Vector3.Lerp(cameraTransform.position, targetPosition, smoothingFactor * Time.deltaTime);
 
         // Направляем камеру на точку выше игрока
         Vector3 lookTarget = GetLookTarget();
@@ -492,5 +512,84 @@ public class CameraController : MonoBehaviour
             }
             return playerTransform;
         }
+    }
+    
+    /// <summary>
+    /// Обработчик события встряски камеры
+    /// </summary>
+    void OnCameraShake(Vector3 explosionPosition)
+    {
+        // Проверяем наличие игрока (ленивое свойство)
+        if (PlayerTransform == null) 
+            return;
+        
+        // Вычисляем квадратичное расстояние до игрока (экономим на квадратном корне)
+        Vector3 distanceVector = PlayerTransform.position - explosionPosition;
+        float sqrDistance = distanceVector.sqrMagnitude;
+        
+        // Если игрок в радиусе встряски
+        if (sqrDistance <= cameraShakeRadius)
+        {
+            // Вычисляем интенсивность встряски (1.0 на границе радиуса, больше в центре)
+            float shakeIntensity = 1.0f - (sqrDistance / cameraShakeRadius);
+            shakeIntensity = Mathf.Clamp01(shakeIntensity);
+            
+            // Вычисляем финальную интенсивность
+            float finalIntensity = shakeIntensity * maxShakeIntensity;
+            
+            // Запускаем встряску
+            StartShake(finalIntensity);
+        }
+    }
+    
+    /// <summary>
+    /// Запускает встряску камеры с заданной интенсивностью
+    /// </summary>
+    void StartShake(float intensity)
+    {
+        // Останавливаем предыдущую встряску если она есть
+        if (shakeCoroutine != null)
+        {
+            StopCoroutine(shakeCoroutine);
+        }
+        
+        // Запускаем новую встряску
+        shakeCoroutine = StartCoroutine(ShakeCoroutine(intensity));
+    }
+    
+    /// <summary>
+    /// Корутина встряски камеры
+    /// </summary>
+    IEnumerator ShakeCoroutine(float intensity)
+    {
+        isShaking = true;
+        float elapsedTime = 0f;
+        
+        while (elapsedTime < shakeDuration)
+        {
+            // Вычисляем прогресс встряски (0.0 - 1.0)
+            float progress = elapsedTime / shakeDuration;
+            
+            // Применяем кривую затухания (сильнее в начале, слабее к концу)
+            float decayFactor = 1.0f - progress;
+            float currentIntensity = intensity * decayFactor;
+            
+            // Генерируем случайное смещение
+            shakeOffset = Random.insideUnitSphere * currentIntensity;
+            
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+        
+        // Завершаем встряску
+        shakeOffset = Vector3.zero;
+        isShaking = false;
+        shakeCoroutine = null;
+    }
+    
+    void OnDestroy()
+    {
+        // Отписываемся от события при уничтожении
+        GlobalEvents.CameraShake.RemoveListener(OnCameraShake);
     }
 }

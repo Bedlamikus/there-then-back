@@ -1032,6 +1032,7 @@ GameObject:
   - component: {fileID: 8039255882697157949}
   - component: {fileID: 8452318880774885986}
   - component: {fileID: 3008468505300814615}
+  - component: {fileID: 2071611320351894911}
   m_Layer: 6
   m_Name: Enemy
   m_TagString: Untagged
@@ -1127,6 +1128,11 @@ MonoBehaviour:
   weaponBarrel: {fileID: 2327516486087737101}
   shootPoint: {fileID: 6748206111318845224}
   botID: 
+  healthComponent: {fileID: 0}
+  deathExplosionForce: 5
+  deathExplosionRadius: 2
+  corpseLifetime: 10
+  partsLifetime: 15
 --- !u!114 &3008468505300814615
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1141,6 +1147,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   availableProjectiles:
   - {fileID: 8801266385320015286, guid: 96cc4bea6137d324fbd61609b9850900, type: 3}
+  muzzleFlashType: 0
   shootInterval: 1
   turretRotationSpeed: 180
   maxAimAngle: 60
@@ -1149,6 +1156,24 @@ MonoBehaviour:
   maxBarrelPitch: 60
   useLeadTarget: 1
   leadAmount: 0.5
+--- !u!114 &2071611320351894911
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5506370006722563975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8f3d7c92e1b4a5d9c6e8f2b0a7d3e5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 100
+  currentHealth: 0
+  invulnerable: 0
+  invulnerabilityTime: 0.5
+  destroyOnDeath: 0
+  destroyDelay: 5
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0

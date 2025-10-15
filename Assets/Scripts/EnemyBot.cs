@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+[RequireComponent(typeof(HealthComponent))]
 public class EnemyBot : MonoBehaviour, ISpawnable
 {
     [Header("Configurations")]
@@ -19,6 +20,20 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     [Header("Bot Identity")]
     public string botID;
+    
+    [Header("Health")]
+    [Tooltip("Компонент здоровья бота")]
+    public HealthComponent healthComponent;
+    
+    [Header("Death Effect")]
+    [Tooltip("Сила разлета частей при смерти")]
+    public float deathExplosionForce = 5f;
+    [Tooltip("Радиус разлета частей")]
+    public float deathExplosionRadius = 2f;
+    [Tooltip("Время до удаления основного объекта врага после смерти")]
+    public float corpseLifetime = 10f;
+    [Tooltip("Время жизни частей после смерти (секунды)")]
+    public float partsLifetime = 15f;
     
     // Сервисы
     private EnemyMovementService movementService;
@@ -42,6 +57,7 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         
         InitializeBot();
         InitializeServices();
+        InitializeHealth();
         
         // Устанавливаем цель
         target = playerTarget;
@@ -82,6 +98,13 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     {
         Debug.Log($"[Bot] Бот {botID} уничтожен");
         AutoSpawnService.Instance?.UnregisterSpawnable(this);
+        
+        // Отписываемся от событий здоровья
+        if (healthComponent != null)
+        {
+            healthComponent.OnDeath -= OnEnemyDeath;
+            healthComponent.OnDamageTaken -= OnEnemyDamageTaken;
+        }
     }
     
     /// <summary>
@@ -144,6 +167,196 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         movementService = new EnemyMovementService(controller, transform, movementConfig, animator);
         pathfindingService = new EnemyPathfindingService(transform, pathfindingConfig);
         aiStateMachine = new EnemyAIStateMachine(transform, aiConfig, pathfindingService, movementService, this);
+    }
+    
+    private void InitializeHealth()
+    {
+        // Получаем компонент здоровья
+        if (healthComponent == null)
+            healthComponent = GetComponent<HealthComponent>();
+        
+        // Подписываемся на события здоровья
+        if (healthComponent != null)
+        {
+            healthComponent.OnDeath += OnEnemyDeath;
+            healthComponent.OnDamageTaken += OnEnemyDamageTaken;
+            Debug.Log($"[Bot] {botID} инициализировано здоровье: {healthComponent.CurrentHealth}/{healthComponent.MaxHealth}");
+        }
+        else
+        {
+            Debug.LogError($"[Bot] {botID} HealthComponent не найден!");
+        }
+    }
+    
+    private void OnEnemyDeath()
+    {
+        Debug.Log($"[Bot] {botID} погиб!");
+        
+        // Останавливаем движение
+        if (controller != null)
+            controller.enabled = false;
+        
+        // Разбрасываем части
+        ExplodeEnemyParts();
+        
+        // Удаляем основной объект врага через некоторое время
+        StartCoroutine(DestroyCorpseAfterDelay());
+        
+        // Останавливаем AI (отключаем Update)
+        enabled = false;
+    }
+    
+    /// <summary>
+    /// Удаляет основной объект врага через заданное время
+    /// </summary>
+    private System.Collections.IEnumerator DestroyCorpseAfterDelay()
+    {
+        yield return new UnityEngine.WaitForSeconds(corpseLifetime);
+        
+        Debug.Log($"[Bot] {botID} удаление трупа");
+        Destroy(gameObject);
+    }
+    
+    /// <summary>
+    /// Разбрасывает части врага при смерти
+    /// </summary>
+    private void ExplodeEnemyParts()
+    {
+        // Находим все дочерние объекты с MeshRenderer/SkinnedMeshRenderer
+        MeshRenderer[] meshRenderers = GetComponentsInChildren<MeshRenderer>();
+        SkinnedMeshRenderer[] skinnedMeshRenderers = GetComponentsInChildren<SkinnedMeshRenderer>();
+        
+        Vector3 explosionCenter = transform.position;
+        
+        // Обрабатываем обычные меши
+        foreach (MeshRenderer meshRenderer in meshRenderers)
+        {
+            GameObject part = meshRenderer.gameObject;
+            
+            // Пропускаем сам объект врага
+            if (part == gameObject)
+                continue;
+            
+            // Получаем MeshFilter для создания MeshCollider
+            MeshFilter meshFilter = part.GetComponent<MeshFilter>();
+            if (meshFilter == null || meshFilter.sharedMesh == null)
+                continue;
+            
+            // Отсоединяем от врага
+            part.transform.SetParent(null);
+            
+            // Добавляем Rigidbody
+            Rigidbody rb = part.GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = part.AddComponent<Rigidbody>();
+                rb.mass = 1f;
+                rb.drag = 0.5f;
+                rb.angularDrag = 0.5f;
+            }
+            
+            // Добавляем MeshCollider
+            MeshCollider meshCollider = part.GetComponent<MeshCollider>();
+            if (meshCollider == null)
+            {
+                meshCollider = part.AddComponent<MeshCollider>();
+                meshCollider.convex = true; // Обязательно для Rigidbody
+                meshCollider.sharedMesh = meshFilter.sharedMesh;
+            }
+            
+            // Применяем силу взрыва
+            Vector3 direction = (part.transform.position - explosionCenter).normalized;
+            if (direction.sqrMagnitude < 0.01f)
+                direction = Random.insideUnitSphere;
+            
+            rb.AddForce(direction * deathExplosionForce + Vector3.up * (deathExplosionForce * 0.5f), ForceMode.VelocityChange);
+            rb.AddTorque(Random.insideUnitSphere * deathExplosionForce, ForceMode.VelocityChange);
+            
+            // Добавляем компонент автоудаления
+            DestroyAfterTime destroyComponent = part.AddComponent<DestroyAfterTime>();
+            destroyComponent.lifetime = partsLifetime;
+            
+            Debug.Log($"[Bot] Часть {part.name} отсоединена и получила физику");
+        }
+        
+        // Обрабатываем skinned меши (для персонажей с анимацией)
+        foreach (SkinnedMeshRenderer skinnedRenderer in skinnedMeshRenderers)
+        {
+            GameObject part = skinnedRenderer.gameObject;
+            
+            // Пропускаем сам объект врага
+            if (part == gameObject)
+                continue;
+            
+            // Создаем статичный меш из skinned mesh
+            Mesh bakedMesh = new Mesh();
+            skinnedRenderer.BakeMesh(bakedMesh);
+            
+            // Отключаем SkinnedMeshRenderer
+            skinnedRenderer.enabled = false;
+            
+            // Добавляем обычный MeshRenderer и MeshFilter
+            MeshFilter meshFilter = part.GetComponent<MeshFilter>();
+            if (meshFilter == null)
+                meshFilter = part.AddComponent<MeshFilter>();
+            meshFilter.mesh = bakedMesh;
+            
+            MeshRenderer meshRenderer = part.GetComponent<MeshRenderer>();
+            if (meshRenderer == null)
+                meshRenderer = part.AddComponent<MeshRenderer>();
+            meshRenderer.materials = skinnedRenderer.materials;
+            
+            // Отсоединяем от врага
+            part.transform.SetParent(null);
+            
+            // Добавляем Rigidbody
+            Rigidbody rb = part.GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = part.AddComponent<Rigidbody>();
+                rb.mass = 1f;
+                rb.drag = 0.5f;
+                rb.angularDrag = 0.5f;
+            }
+            
+            // Добавляем MeshCollider
+            MeshCollider meshCollider = part.GetComponent<MeshCollider>();
+            if (meshCollider == null)
+            {
+                meshCollider = part.AddComponent<MeshCollider>();
+                meshCollider.convex = true;
+                meshCollider.sharedMesh = bakedMesh;
+            }
+            
+            // Применяем силу взрыва
+            Vector3 direction = (part.transform.position - explosionCenter).normalized;
+            if (direction.sqrMagnitude < 0.01f)
+                direction = Random.insideUnitSphere;
+            
+            rb.AddForce(direction * deathExplosionForce + Vector3.up * (deathExplosionForce * 0.5f), ForceMode.VelocityChange);
+            rb.AddTorque(Random.insideUnitSphere * deathExplosionForce, ForceMode.VelocityChange);
+            
+            // Добавляем компонент автоудаления
+            DestroyAfterTime destroyComponent = part.AddComponent<DestroyAfterTime>();
+            destroyComponent.lifetime = partsLifetime;
+            
+            Debug.Log($"[Bot] Skinned часть {part.name} отсоединена и получила физику");
+        }
+        
+        // Отключаем animator чтобы не мешал
+        if (animator != null)
+            animator.enabled = false;
+    }
+    
+    private void OnEnemyDamageTaken(float damage)
+    {
+        Debug.Log($"[Bot] {botID} получил {damage} урона. Осталось здоровья: {healthComponent.CurrentHealth}/{healthComponent.MaxHealth}");
+        
+        // Здесь можно добавить визуальные/звуковые эффекты получения урона:
+        // - Воспроизвести анимацию получения урона
+        // - Звук удара
+        // - Эффект крови/искр
+        // - Красная вспышка на модели
     }
     
     private void UpdateServices()

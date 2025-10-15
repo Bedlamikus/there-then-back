@@ -20,6 +20,9 @@ public class PlayerWeaponController : MonoBehaviour
     [Tooltip("Точка выстрела на конце ствола")]
     public Transform shootPoint;
     
+    [Tooltip("Тип вспышки выстрела")]
+    public ProjectileType muzzleFlashType = ProjectileType.MuzzleFlash;
+    
     [Header("Rotation Settings")]
     [Tooltip("Скорость поворота турели (градусов в секунду)")]
     public float turretRotationSpeed = 180f;
@@ -48,8 +51,18 @@ public class PlayerWeaponController : MonoBehaviour
     // Состояние стрельбы
     private bool isShootButtonPressed = false;
     
+    // Ссылка на PlayerController для проверки смерти
+    private PlayerController playerController;
+    
     void Start()
     {
+        // Получаем ссылку на PlayerController
+        playerController = GetComponent<PlayerController>();
+        if (playerController == null)
+        {
+            Debug.LogWarning("[Player Weapon] PlayerController не найден на этом объекте!");
+        }
+        
         // Подписываемся на событие обновления точки прицеливания
         GlobalEvents.CameraAimPoint.AddListener(OnAimPointUpdated);
         
@@ -221,6 +234,12 @@ public class PlayerWeaponController : MonoBehaviour
     /// </summary>
     void TryShoot()
     {
+        // Блокируем стрельбу если игрок мертв
+        if (playerController != null && playerController.IsDead)
+        {
+            return;
+        }
+        
         if (availableProjectiles.Count == 0) return;
         
         // Получаем текущий снаряд
@@ -259,6 +278,9 @@ public class PlayerWeaponController : MonoBehaviour
         
         // Создаем снаряд в точке выстрела
         GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+        
+        // Вызываем событие вспышки выстрела
+        GlobalEvents.ProjectileExploded?.Invoke(shootPoint.position, muzzleFlashType);
     }
     
     /// <summary>

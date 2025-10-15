@@ -147,6 +147,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 631b3a13a8f1b9640affa3a4f67fa73f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  projectileType: 0
   force: 6
   radius: 1
   maxDamage: 20

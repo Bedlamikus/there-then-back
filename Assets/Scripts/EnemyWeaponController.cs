@@ -7,6 +7,10 @@ public class EnemyWeaponController : MonoBehaviour
     [Tooltip("Список префабов снарядов, которыми может стрелять бот")]
     public List<GameObject> availableProjectiles = new List<GameObject>();
     
+    [Header("Muzzle Flash")]
+    [Tooltip("Тип вспышки выстрела")]
+    public ProjectileType muzzleFlashType = ProjectileType.MuzzleFlash;
+    
     [Header("Shooting Settings (DEPRECATED - используйте ProjectileAmmoData на префабах)")]
     [Tooltip("Интервал между выстрелами (секунды) - используется если на снаряде нет ProjectileAmmoData")]
     public float shootInterval = 1f;
@@ -335,6 +339,9 @@ public class EnemyWeaponController : MonoBehaviour
         // Создаем снаряд В ТОЧКЕ ВЫСТРЕЛА (на конце ствола)
         // Снаряд сам знает как ему лететь (использует свои параметры)
         GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+        
+        // Вызываем событие вспышки выстрела
+        GlobalEvents.ProjectileExploded?.Invoke(shootPoint.position, muzzleFlashType);
     }
     
     /// <summary>

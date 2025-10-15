@@ -6,6 +6,7 @@ public class Weapon : MonoBehaviour
     public Transform shootPosition;               // Точка откуда стреляем
     public GameObject projectilePrefab;           // Префаб снаряда Projectile
     public float shootForce = 10f;                // Сила выстрела
+    public ProjectileType muzzleFlashType = ProjectileType.MuzzleFlash; // Тип вспышки выстрела
     
     [Header("Magazine System")]
     public int maxAmmo = 3;                       // Максимальное количество патронов в магазине
@@ -14,9 +15,15 @@ public class Weapon : MonoBehaviour
     private int currentAmmo;                       // Текущее количество патронов в магазине
     private float lastReloadTime;                 // Время последней перезарядки
     private bool isReloading = false;             // Флаг процесса перезарядки
+    
+    // Ссылка на PlayerController для проверки смерти
+    private PlayerController playerController;
 
     void Start()
     {
+        // Получаем ссылку на PlayerController
+        playerController = GetComponent<PlayerController>();
+        
         // ВАЖНО: Если есть PlayerWeaponController, отключаем этот старый скрипт
         PlayerWeaponController newWeaponController = GetComponent<PlayerWeaponController>();
         if (newWeaponController != null)
@@ -55,6 +62,12 @@ public class Weapon : MonoBehaviour
 
     void OnShoot()
     {
+        // Блокируем стрельбу если игрок мертв
+        if (playerController != null && playerController.IsDead)
+        {
+            return;
+        }
+        
         // Проверяем наличие патронов
         if (currentAmmo <= 0)
         {
@@ -71,6 +84,9 @@ public class Weapon : MonoBehaviour
 
         // Создаем снаряд
         GameObject projectile = Instantiate(projectilePrefab, shootPosition.position, shootPosition.rotation);
+        
+        // Вызываем событие вспышки выстрела
+        GlobalEvents.ProjectileExploded?.Invoke(shootPosition.position, muzzleFlashType);
         
         // Применяем силу к снаряду
         Rigidbody projectileRb = projectile.GetComponent<Rigidbody>();

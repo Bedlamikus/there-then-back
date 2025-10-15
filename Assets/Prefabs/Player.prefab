@@ -551,6 +551,7 @@ GameObject:
   - component: {fileID: 4962536976199784962}
   - component: {fileID: 7156868726913546191}
   - component: {fileID: 7362827353862530790}
+  - component: {fileID: 8217571857365402447}
   m_Layer: 6
   m_Name: Player
   m_TagString: Untagged
@@ -650,6 +651,10 @@ MonoBehaviour:
   speedParameter: Speed
   isGroundedParameter: IsGrounded
   animationSpeedMultiplier: 1
+  healthComponent: {fileID: 0}
+  deathExplosionForce: 5
+  deathExplosionRadius: 2
+  partsLifetime: 15
 --- !u!114 &7362827353862530790
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -670,11 +675,30 @@ MonoBehaviour:
   turret: {fileID: 3340778521501724557}
   weaponBarrel: {fileID: 6467144927773201143}
   shootPoint: {fileID: 8488379121750597141}
+  muzzleFlashType: 0
   turretRotationSpeed: 180
   barrelPitchSpeed: 90
   minBarrelPitch: -40
   maxBarrelPitch: 60
   turretModelOffset: 90
+--- !u!114 &8217571857365402447
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427420761115132036}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8f3d7c92e1b4a5d9c6e8f2b0a7d3e5c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 100
+  currentHealth: 0
+  invulnerable: 0
+  invulnerabilityTime: 0.5
+  destroyOnDeath: 0
+  destroyDelay: 5
 --- !u!1 &1584638977597030045
 GameObject:
   m_ObjectHideFlags: 0

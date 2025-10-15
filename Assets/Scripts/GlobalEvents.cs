@@ -18,4 +18,14 @@ public class GlobalEvents
     public static UnityEvent RegenerateWorld = new();  // Событие перегенерации мира
     public static UnityEvent WorldReady = new();  // Событие готовности мира (после генерации/загрузки)
     public static UnityEvent<float> WorldGenerationProgress = new();  // Прогресс генерации мира (0.0 - 1.0)
+    
+    // Health & Combat Events
+    public static UnityEvent<GameObject, float, GameObject> EntityDamaged = new();  // (damaged entity, damage amount, damage source)
+    public static UnityEvent<GameObject, GameObject> EntityDied = new();  // (dead entity, killer)
+    
+    // Particle Effects Events
+    public static UnityEvent<Vector3, ProjectileType> ProjectileExploded = new();  // (explosion position, projectile type)
+    
+    // Camera Effects Events
+    public static UnityEvent<Vector3> CameraShake = new();  // (explosion position)
 }

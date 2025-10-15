@@ -4,6 +4,10 @@ using System.Collections;
 [RequireComponent(typeof(Rigidbody))]
 public class Projectile : MonoBehaviour
 {
+    [Header("Projectile Type")]
+    [Tooltip("Тип снаряда для выбора эффекта взрыва")]
+    public ProjectileType projectileType = ProjectileType.Pistol;
+    
     [Header("Force Settings")]
     public float force = 35f;
 
@@ -17,6 +21,10 @@ public class Projectile : MonoBehaviour
     public float blinkInterval = 0.2f;             // Интервал мигания (секунды)
     public float whiteIntensity = 0.5f;            // Интенсивность белого цвета (0-1)
     public AnimationCurve blinkCurve;              // Кривая мигания для плавности
+
+    [Header("Camera Shake")]
+    [Tooltip("Вызывать встряску камеры при взрыве")]
+    public bool cameraShake = false;
 
     [Header("Chain Reaction")]
     public float chainReactionRadius = 8f;         // Радиус обнаружения других снарядов
@@ -116,6 +124,14 @@ public class Projectile : MonoBehaviour
             return; // Игнорируем столкновения с игроком в первые 0.1 секунды
         }
         
+        // Проверяем наличие компонента здоровья для прямого попадания
+        HealthComponent health = c.gameObject.GetComponent<HealthComponent>();
+        if (health != null && canCollideWithPlayer)
+        {
+            // Наносим урон при прямом попадании
+            health.TakeDamage(maxDamage, gameObject);
+        }
+        
         // Проверяем, столкнулись ли с VoxelChunk16
         VoxelChunk16 voxelChunk = c.gameObject.GetComponent<VoxelChunk16>();
         
@@ -145,6 +161,14 @@ public class Projectile : MonoBehaviour
         if (player != null && !canCollideWithPlayer)
         {
             return; // Игнорируем триггеры с игроком в первые 0.1 секунды
+        }
+        
+        // Проверяем наличие компонента здоровья для прямого попадания
+        HealthComponent health = other.GetComponent<HealthComponent>();
+        if (health != null && canCollideWithPlayer)
+        {
+            // Наносим урон при прямом попадании
+            health.TakeDamage(maxDamage, gameObject);
         }
         
         // Проверяем, попали ли в VoxelChunk16
@@ -235,10 +259,28 @@ public class Projectile : MonoBehaviour
         
         hasExploded = true;
         
+        // Вызываем событие взрыва для проигрывания партиклов
+        GlobalEvents.ProjectileExploded?.Invoke(hitPoint, projectileType);
+        
+        // Вызываем событие встряски камеры (если включена)
+        if (cameraShake)
+        {
+            Debug.Log($"[Projectile] Triggering camera shake! Explosion at: {hitPoint}, Type: {projectileType}");
+            GlobalEvents.CameraShake?.Invoke(hitPoint);
+        }
+        else
+        {
+            Debug.Log($"[Projectile] Camera shake disabled for projectile type: {projectileType}");
+        }
+        
+        // Наносим урон воксельным блокам
         if (VoxelWorld.Instance != null)
         {
             VoxelWorld.Instance.DamageSphere(hitPoint, radius, maxDamage);
         }
+
+        // Наносим урон всем сущностям в радиусе взрыва
+        DamageEntitiesInRadius(hitPoint, radius, maxDamage);
 
         // Запускаем цепную реакцию
         StartChainReaction();
@@ -246,6 +288,43 @@ public class Projectile : MonoBehaviour
         if (destroyOnHit) 
         {
             StartCoroutine(DestroyAfterChainReaction());
+        }
+    }
+    
+    /// <summary>
+    /// Наносит урон всем сущностям с компонентом HealthComponent в радиусе взрыва
+    /// Урон уменьшается с расстоянием от центра взрыва
+    /// </summary>
+    protected virtual void DamageEntitiesInRadius(Vector3 center, float damageRadius, float damage)
+    {
+        // Находим все коллайдеры в радиусе взрыва
+        Collider[] colliders = Physics.OverlapSphere(center, damageRadius);
+        
+        foreach (Collider col in colliders)
+        {
+            // Проверяем наличие компонента здоровья
+            HealthComponent health = col.GetComponent<HealthComponent>();
+            if (health == null || health.IsDead)
+                continue;
+            
+            // Игнорируем снаряды
+            if (col.GetComponent<Projectile>() != null)
+                continue;
+            
+            // Вычисляем расстояние от центра взрыва
+            float distance = Vector3.Distance(center, col.transform.position);
+            
+            // Вычисляем урон на основе расстояния (линейное затухание)
+            float damageMultiplier = 1f - (distance / damageRadius);
+            damageMultiplier = Mathf.Clamp01(damageMultiplier);
+            
+            float actualDamage = damage * damageMultiplier;
+            
+            // Наносим урон
+            if (actualDamage > 0)
+            {
+                health.TakeDamage(actualDamage, gameObject);
+            }
         }
     }
 
@@ -357,4 +436,5 @@ public class Projectile : MonoBehaviour
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, chainReactionRadius);
     }
+    
 }
