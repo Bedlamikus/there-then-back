@@ -24,6 +24,9 @@ public class EnemyAIStateMachine
     private Vector3 positionBeforeChase;
     private Vector3 lastSeenTargetPosition;
     
+    // Ссылка на EnemyBot для получения информации о снарядах
+    private EnemyBot enemyBot;
+    
     // Патрулирование
     private bool isWaiting = false;
     private float patrolWaitTimer = 0f;
@@ -52,6 +55,9 @@ public class EnemyAIStateMachine
         this.pathfindingService = pathfindingService;
         this.movementService = movementService;
         this.spawnable = spawnable;
+        
+        // Получаем ссылку на EnemyBot
+        this.enemyBot = spawnable as EnemyBot;
         
         startPosition = transform.position;
         lastYPosition = transform.position.y;
@@ -269,18 +275,28 @@ public class EnemyAIStateMachine
             // (не имеет смысла атаковать если игрок далеко по вертикали)
             if (horizontalDistance <= config.attackRange)
             {
-                ChangeState(AIState.Attack, $"Цель в радиусе атаки (3D: {distanceToTarget:F1}m, гориз: {horizontalDistance:F1}m)");
-                pathfindingService.StopPathfinding();
+                // Получаем прицельную дистанцию из текущего снаряда
+                float aimDistance = GetCurrentAimDistance();
+                
+                // Проверяем что цель в пределах прицельной дистанции
+                if (horizontalDistance <= aimDistance)
+                {
+                    ChangeState(AIState.Attack, $"Цель в радиусе атаки (3D: {distanceToTarget:F1}m, гориз: {horizontalDistance:F1}m, прицел: {aimDistance:F1}m)");
+                    pathfindingService.StopPathfinding();
+                }
             }
         }
     }
     
     private void HandleAttackState(float distanceToTarget, float horizontalDistance)
     {
+        // Получаем прицельную дистанцию из текущего снаряда
+        float aimDistance = GetCurrentAimDistance();
+        
         // Выходим из атаки если цель далеко по горизонтали
-        if (horizontalDistance > config.attackRange * 1.5f)
+        if (horizontalDistance > aimDistance * 1.5f)
         {
-            ChangeState(AIState.Chase, $"Цель вышла из радиуса атаки (гориз: {horizontalDistance:F1}m)");
+            ChangeState(AIState.Chase, $"Цель вышла из радиуса атаки (гориз: {horizontalDistance:F1}m, прицел: {aimDistance:F1}m)");
         }
     }
     
@@ -400,5 +416,28 @@ public class EnemyAIStateMachine
         }
         
         lastYPosition = currentY;
+    }
+    
+    /// <summary>
+    /// Получает прицельную дистанцию из текущего снаряда
+    /// </summary>
+    private float GetCurrentAimDistance()
+    {
+        if (enemyBot == null) return config.attackRange;
+        
+        // Получаем EnemyWeaponController
+        EnemyWeaponController weaponController = enemyBot.GetComponent<EnemyWeaponController>();
+        if (weaponController == null) return config.attackRange;
+        
+        // Получаем текущий снаряд
+        GameObject currentProjectile = weaponController.GetCurrentProjectile();
+        if (currentProjectile == null) return config.attackRange;
+        
+        // Получаем Projectile компонент
+        Projectile projectile = currentProjectile.GetComponent<Projectile>();
+        if (projectile == null) return config.attackRange;
+        
+        // Возвращаем прицельную дистанцию из снаряда
+        return projectile.aimDistance;
     }
 }

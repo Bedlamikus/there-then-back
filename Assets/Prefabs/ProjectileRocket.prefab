@@ -5473,6 +5473,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   projectileType: 1
   force: 35
+  aimDistance: 12
   radius: 8
   maxDamage: 15
   destroyOnHit: 1
@@ -5506,7 +5507,7 @@ MonoBehaviour:
   engineEffect: {fileID: 1165141751110540656}
   rocketLight: {fileID: 655580944094903775}
   explosionRadius: 4
-  impactForce: 50
+  impactForce: 9
 --- !u!114 &-6403484196794987455
 MonoBehaviour:
   m_ObjectHideFlags: 0

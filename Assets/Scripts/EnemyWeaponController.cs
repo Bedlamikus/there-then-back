@@ -347,7 +347,7 @@ public class EnemyWeaponController : MonoBehaviour
     /// <summary>
     /// Получает текущий снаряд для стрельбы (умный выбор)
     /// </summary>
-    GameObject GetCurrentProjectile()
+    public GameObject GetCurrentProjectile()
     {
         if (availableProjectiles.Count == 0) return null;
         

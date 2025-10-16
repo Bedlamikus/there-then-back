@@ -10,6 +10,10 @@ public class Projectile : MonoBehaviour
     
     [Header("Force Settings")]
     public float force = 35f;
+    
+    [Header("Aiming Settings")]
+    [Tooltip("Оптимальная дистанция для прицельной стрельбы")]
+    public float aimDistance = 15f;
 
     [Header("Explosion Settings")]
     public float radius = 6f;
