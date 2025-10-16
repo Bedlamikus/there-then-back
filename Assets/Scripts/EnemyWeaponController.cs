@@ -92,7 +92,7 @@ public class EnemyWeaponController : MonoBehaviour
         }
     }
     
-    void Update()
+    public void Update()
     {
         // Обновляем все магазины (автоматическая перезарядка)
         UpdateMagazines();
@@ -235,7 +235,7 @@ public class EnemyWeaponController : MonoBehaviour
     /// <summary>
     /// Пытается выстрелить
     /// </summary>
-    void TryShoot()
+    public void TryShoot()
     {
         // Проверяем наличие снарядов
         if (availableProjectiles.Count == 0) return;
@@ -368,10 +368,6 @@ public class EnemyWeaponController : MonoBehaviour
         Vector3 directionToTarget = target.position - barrel.position;
         float verticalAngle = Vector3.SignedAngle(Vector3.forward, directionToTarget, Vector3.right);
         
-        // Проверяем есть ли путь до игрока
-        EnemyPathfindingService pathfinding = bot.GetPathfindingService();
-        bool hasPath = pathfinding != null && pathfinding.CurrentPath != null && pathfinding.CurrentPath.Count > 0;
-        
         // СТРАТЕГИЯ 1: Стрельба вниз - используем стандартный снаряд (пушечное ядро)
         if (verticalAngle < -15f) // Стреляем вниз больше чем на 15 градусов
         {
@@ -382,27 +378,21 @@ public class EnemyWeaponController : MonoBehaviour
             }
         }
         
-        // СТРАТЕГИЯ 2: Нет пути до игрока, но игрок в зоне видимости - пробуем динамит с шансом
-        if (!hasPath && Random.value < 0.3f) // 30% шанс
-        {
-            GameObject dinamitProjectile = FindProjectileByType("Dinamit");
-            if (dinamitProjectile != null)
-            {
-                return dinamitProjectile;
-            }
-        }
-        
-        // СТРАТЕГИЯ 3: Стрельба вверх или прямо - используем ракету или пулю
+        // СТРАТЕГИЯ 2: Горизонтальная стрельба - используем ракеты
         GameObject rocketProjectile = FindProjectileByType("Rocket");
         if (rocketProjectile != null)
         {
             return rocketProjectile;
         }
         
-        GameObject pistolProjectile = FindProjectileByType("Pistol");
-        if (pistolProjectile != null)
+        // СТРАТЕГИЯ 3: Стрельба вверх - используем камни
+        if (verticalAngle > 15f) // Стреляем вверх больше чем на 15 градусов
         {
-            return pistolProjectile;
+            GameObject rockProjectile = FindProjectileByType("Rock");
+            if (rockProjectile != null)
+            {
+                return rockProjectile;
+            }
         }
         
         // Fallback - первый доступный

@@ -108,8 +108,8 @@ public class PlayerController : MonoBehaviour, ISpawnable
         if (controller != null)
             controller.enabled = false;
         
-        // Разбрасываем части
-        ExplodePlayerParts();
+        // Разбрасываем части (ОТКЛЮЧЕНО - части провалятся без коллайдеров)
+        // ExplodePlayerParts();
         
         // Отключаем Update но оставляем скрипт активным (для камеры)
         // enabled = false; - НЕ отключаем, просто блокируем управление через _isDead

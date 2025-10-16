@@ -1,18 +1,9 @@
 using UnityEngine;
-using System.Collections.Generic;
+using System.Collections;
 
 [RequireComponent(typeof(HealthComponent))]
 public class EnemyBot : MonoBehaviour, ISpawnable
 {
-    [Header("Configurations")]
-    public EnemyMovementConfig movementConfig;
-    public EnemyPathfindingConfig pathfindingConfig;
-    public EnemyAIConfig aiConfig;
-    
-    [Header("Components")]
-    public CharacterController controller;
-    public Animator animator;
-    
     [Header("Weapon")]
     public Transform turret;           // Турель (вращается по Z горизонтально)
     public Transform weaponBarrel;     // Ствол оружия (вращается вверх/вниз)
@@ -35,169 +26,345 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     [Tooltip("Время жизни частей после смерти (секунды)")]
     public float partsLifetime = 15f;
     
-    // Сервисы
-    private EnemyMovementService movementService;
-    private EnemyPathfindingService pathfindingService;
-    private EnemyAIStateMachine aiStateMachine;
+    // Компоненты
+    private VoxelBotController voxelController;
+    private EnemyWeaponController weaponController;
+    private Animator animator;
     
-    // Цель
+    // Цель и состояние
     private Transform target;
     private bool isInitialized = false;
+    private bool isDead = false;
     
     // Система кулинга
     private float nextCullingCheckTime = 0f;
-    private PlayerController playerController; // Для получения viewDistance
-
-    public void Init(Transform playerTarget)
+    private PlayerController playerController;
+    
+    // AI состояние
+    private float lastDetectionTime = 0f;
+    private bool hasDetectedPlayer = false;
+    private float lastAttackTime = 0f;
+    private float attackCooldown = 1f;
+    
+    void Start()
     {
-        if (isInitialized)
+        // Инициализируем только если еще не инициализирован
+        if (!isInitialized)
         {
-            return;
-        }
-        
-        InitializeBot();
-        InitializeServices();
-        InitializeHealth();
-        
-        // Устанавливаем цель
-        target = playerTarget;
-        if (aiStateMachine != null && target != null)
-        {
-            aiStateMachine.SetTarget(target);
-        }
-        
-        // Получаем PlayerController для кулинга
-        if (playerTarget != null)
-        {
-            playerController = playerTarget.GetComponent<PlayerController>();
-        }
-        
-        // Инициализируем кулинг со случайной задержкой
-        nextCullingCheckTime = Time.time + Random.Range(5f, 10f);
-        
-        Debug.Log($"[Bot] Бот {botID} создан в позиции {transform.position}");
-        
-        RegisterWithAutoSpawn();
-        isInitialized = true;
-    }
-
-    void Update()
-    {
-        UpdateServices();
-        HandleMovement();
-        
-        // Проверка кулинга раз в ~10 секунд
-        if (Time.time >= nextCullingCheckTime)
-        {
-            CheckCulling();
-            nextCullingCheckTime = Time.time + Random.Range(8f, 12f);
+            InitializeBot();
         }
     }
     
-    void OnDestroy()
+    void Update()
     {
-        Debug.Log($"[Bot] Бот {botID} уничтожен");
-        AutoSpawnService.Instance?.UnregisterSpawnable(this);
+        if (!isInitialized || isDead) return;
         
-        // Отписываемся от событий здоровья
-        if (healthComponent != null)
-        {
-            healthComponent.OnDeath -= OnEnemyDeath;
-            healthComponent.OnDamageTaken -= OnEnemyDamageTaken;
-        }
+        UpdateCulling();
+        UpdateAI();
+        UpdateWeapon();
     }
     
     /// <summary>
-    /// Проверка дистанции до игрока и деспавн если слишком далеко
-    /// Использует КВАДРАТ расстояния для оптимизации (без Mathf.Sqrt)
+    /// Инициализирует бота
     /// </summary>
-    void CheckCulling()
+    void InitializeBot()
     {
-        if (target == null || playerController == null)
-            return;
-        
-        // Вычисляем КВАДРАТ расстояния БЕЗ Mathf.Sqrt (быстрее!)
-        Vector3 pos = transform.position;
-        Vector3 targetPos = target.position;
-        
-        float dx = pos.x - targetPos.x;
-        float dz = pos.z - targetPos.z;
-        float distanceSqr = dx * dx + dz * dz;
-        
-        // Враги деспавнятся на расстоянии = viewDistance
-        // Чанки исчезают на viewDistance * 1.5
-        // Сравниваем квадраты расстояний
-        float despawnDistanceSqr = playerController.viewDistance * playerController.viewDistance;
-        
-        if (distanceSqr > despawnDistanceSqr)
-        {
-            // Убрали Debug.Log чтобы не создавать строки (GC)
-            Destroy(gameObject);
-        }
-    }
-    
-    private void InitializeBot()
-    {
-        // Генерируем уникальный ID если не задан
+        // Генерируем ID если не задан
         if (string.IsNullOrEmpty(botID))
         {
             botID = $"EnemyBot_{GetInstanceID()}";
         }
         
-        // Получаем компоненты если не назначены
-        if (controller == null)
-            controller = GetComponent<CharacterController>();
+        // Получаем компоненты
+        healthComponent = GetComponent<HealthComponent>();
+        animator = GetComponent<Animator>();
+        weaponController = GetComponent<EnemyWeaponController>();
         
-        if (animator == null)
-            animator = GetComponent<Animator>();
+        // Создаем VoxelBotController
+        voxelController = gameObject.AddComponent<VoxelBotController>();
+        voxelController.botId = botID;
         
-        // Создаем конфигурации по умолчанию если не назначены
-        if (movementConfig == null)
-            movementConfig = CreateDefaultMovementConfig();
+        // Проверяем что конфиг назначен
+        if (voxelController.config == null)
+        {
+            Debug.LogError($"[EnemyBot] VoxelBotConfig not assigned to VoxelBotController for {botID}!");
+        }
         
-        if (pathfindingConfig == null)
-            pathfindingConfig = CreateDefaultPathfindingConfig();
+        // Инициализируем здоровье
+        InitializeHealth();
         
-        if (aiConfig == null)
-            aiConfig = CreateDefaultAIConfig();
+        // Получаем PlayerController для кулинга
+        playerController = FindObjectOfType<PlayerController>();
+        
+        // Регистрируем в системе автоспавна
+        RegisterWithAutoSpawn();
+        
+        isInitialized = true;
     }
     
-    private void InitializeServices()
+    /// <summary>
+    /// Инициализирует бота с целью (вызывается из EnemySpawner)
+    /// </summary>
+    public void Init(Transform targetPlayer)
     {
-        movementService = new EnemyMovementService(controller, transform, movementConfig, animator);
-        pathfindingService = new EnemyPathfindingService(transform, pathfindingConfig);
-        aiStateMachine = new EnemyAIStateMachine(transform, aiConfig, pathfindingService, movementService, this);
+        target = targetPlayer;
+        
+        // Если VoxelBotController еще не создан, создаем его
+        if (voxelController == null)
+        {
+            InitializeBot();
+        }
+        
+        // Устанавливаем цель для VoxelBotController
+        if (voxelController != null)
+        {
+            voxelController.SetTarget(target);
+        }
+        
     }
     
-    private void InitializeHealth()
+    /// <summary>
+    /// Устанавливает цель для бота
+    /// </summary>
+    public void SetTarget(Transform newTarget)
     {
-        // Получаем компонент здоровья
+        target = newTarget;
+        
+        // Устанавливаем цель для VoxelBotController
+        if (voxelController != null)
+        {
+            voxelController.SetTarget(target);
+        }
+        
+    }
+    
+    /// <summary>
+    /// Инициализирует систему здоровья
+    /// </summary>
+    void InitializeHealth()
+    {
         if (healthComponent == null)
-            healthComponent = GetComponent<HealthComponent>();
+        {
+            Debug.LogError($"[EnemyBot] HealthComponent not found on {gameObject.name}");
+            return;
+        }
         
         // Подписываемся на события здоровья
-        if (healthComponent != null)
+        healthComponent.OnDeath += OnEnemyDeath;
+        healthComponent.OnDamageTaken += OnEnemyDamageTaken;
+        
+    }
+    
+    /// <summary>
+    /// Обновляет систему кулинга
+    /// </summary>
+    void UpdateCulling()
+    {
+        if (playerController == null) return;
+        
+        // Проверка кулинга раз в ~10 секунд
+        if (Time.time >= nextCullingCheckTime)
         {
-            healthComponent.OnDeath += OnEnemyDeath;
-            healthComponent.OnDamageTaken += OnEnemyDamageTaken;
-            Debug.Log($"[Bot] {botID} инициализировано здоровье: {healthComponent.CurrentHealth}/{healthComponent.MaxHealth}");
+            nextCullingCheckTime = Time.time + 10f;
+            
+            float distanceToPlayer = Vector3.Distance(transform.position, playerController.transform.position);
+            float despawnDistance = playerController.viewDistance + 50f; // Дополнительный буфер
+            
+            if (distanceToPlayer > despawnDistance)
+            {
+                Destroy(gameObject);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Обновляет ИИ бота
+    /// </summary>
+    void UpdateAI()
+    {
+        if (target == null)
+        {
+            // Ищем игрока
+            FindPlayer();
+            return;
+        }
+        
+        // Проверяем расстояние до игрока
+        float distanceToPlayer = Vector3.Distance(transform.position, target.position);
+        
+        // Проверяем обнаружение игрока
+        if (distanceToPlayer <= voxelController.config.detectionRadius)
+        {
+            if (!hasDetectedPlayer)
+            {
+                hasDetectedPlayer = true;
+                lastDetectionTime = Time.time;
+            }
+            
+            // Устанавливаем цель для движения
+            voxelController.SetTarget(target);
+            
+            // Проверяем возможность атаки
+            if (distanceToPlayer <= voxelController.config.attackRange)
+            {
+                TryAttack();
+            }
         }
         else
         {
-            Debug.LogError($"[Bot] {botID} HealthComponent не найден!");
+            // Игрок слишком далеко
+            if (hasDetectedPlayer)
+            {
+                hasDetectedPlayer = false;
+                voxelController.SetTarget(null);
+            }
+        }
+        
+        // Обновляем анимацию (теперь это делает VoxelBotController)
+        // UpdateAnimation();
+        
+    }
+    
+    /// <summary>
+    /// Обновляет анимацию бота
+    /// </summary>
+    void UpdateAnimation()
+    {
+        if (animator == null) 
+        {
+            Debug.LogWarning($"[EnemyBot] Animator is null for bot {botID}!");
+            return;
+        }
+        
+        // Вычисляем скорость движения
+        Vector3 velocity = Vector3.zero;
+        bool isJumping = false;
+        if (voxelController != null)
+        {
+            VoxelBotData botData = voxelController.GetBotData();
+            if (botData != null)
+            {
+                velocity = botData.velocity;
+                isJumping = botData.isJumping;
+            }
+        }
+        
+        // Устанавливаем параметры анимации (как у игрока)
+        float speed = velocity.magnitude;
+        bool isGrounded = IsGrounded();
+        
+        // Нормализуем скорость как у игрока (0 = стоит, 1 = максимальная скорость)
+        float normalizedSpeed = Mathf.Clamp01(speed / voxelController.config.moveSpeed);
+        
+        animator.SetFloat("Speed", normalizedSpeed);
+        animator.SetBool("IsGrounded", isGrounded);
+        // animator.SetBool("IsJumping", isJumping); // УБРАНО - как у игрока
+        
+        // Отладочная информация для анимации
+        if (Time.frameCount % 60 == 0) // Каждую секунду
+        {
+            Debug.Log($"[EnemyBot] Animation params: Speed={normalizedSpeed:F2}, IsGrounded={isGrounded}");
+        }
+        
+        // Поворачиваем бота в направлении движения
+        if (speed > 0.1f)
+        {
+            Vector3 moveDirection = velocity.normalized;
+            moveDirection.y = 0; // Игнорируем вертикальное движение
+            
+            if (moveDirection.magnitude > 0.1f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
+            }
         }
     }
     
-    private void OnEnemyDeath()
+    
+    /// <summary>
+    /// Ищет игрока
+    /// </summary>
+    void FindPlayer()
     {
-        Debug.Log($"[Bot] {botID} погиб!");
+        if (playerController == null)
+        {
+            playerController = FindObjectOfType<PlayerController>();
+            if (playerController == null)
+            {
+                Debug.LogWarning($"[EnemyBot] PlayerController not found!");
+                return;
+            }
+        }
+        
+        target = playerController.transform;
+    }
+    
+    /// <summary>
+    /// Пытается атаковать
+    /// </summary>
+    void TryAttack()
+    {
+        // Блокируем атаку если бот мертв
+        if (isDead) return;
+        
+        if (Time.time - lastAttackTime < attackCooldown) return;
+        
+        if (weaponController != null)
+        {
+            // Проверяем что оружие направлено на цель
+            Vector3 directionToTarget = (target.position - transform.position).normalized;
+            float angleToTarget = Vector3.Angle(transform.forward, directionToTarget);
+            
+            if (angleToTarget < 30f) // Допустимый угол для атаки
+            {
+                weaponController.TryShoot();
+                lastAttackTime = Time.time;
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Обновляет оружие
+    /// </summary>
+    void UpdateWeapon()
+    {
+        // Блокируем обновление оружия если бот мертв
+        if (isDead) return;
+        
+        if (weaponController != null && target != null)
+        {
+            weaponController.Update();
+        }
+    }
+    
+    /// <summary>
+    /// Обработчик смерти бота
+    /// </summary>
+    void OnEnemyDeath()
+    {
+        if (isDead) return;
+        
+        isDead = true;
+        
+        // Устанавливаем флаг смерти в данных бота
+        if (voxelController != null)
+        {
+            VoxelBotData botData = voxelController.GetBotData();
+            if (botData != null)
+            {
+                botData.isDead = true;
+            }
+        }
+        
         
         // Останавливаем движение
-        if (controller != null)
-            controller.enabled = false;
+        if (voxelController != null)
+        {
+            voxelController.SetTarget(null);
+        }
         
-        // Разбрасываем части
-        ExplodeEnemyParts();
+        // Взрываем части бота (ОТКЛЮЧЕНО - части провалятся без коллайдеров)
+        // ExplodeEnemyParts();
         
         // Удаляем основной объект врага через некоторое время
         StartCoroutine(DestroyCorpseAfterDelay());
@@ -207,205 +374,115 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     }
     
     /// <summary>
-    /// Удаляет основной объект врага через заданное время
+    /// Обработчик получения урона
     /// </summary>
-    private System.Collections.IEnumerator DestroyCorpseAfterDelay()
+    void OnEnemyDamageTaken(float damage)
     {
-        yield return new UnityEngine.WaitForSeconds(corpseLifetime);
         
-        Debug.Log($"[Bot] {botID} удаление трупа");
-        Destroy(gameObject);
-    }
-    
-    /// <summary>
-    /// Разбрасывает части врага при смерти
-    /// </summary>
-    private void ExplodeEnemyParts()
-    {
-        // Находим все дочерние объекты с MeshRenderer/SkinnedMeshRenderer
-        MeshRenderer[] meshRenderers = GetComponentsInChildren<MeshRenderer>();
-        SkinnedMeshRenderer[] skinnedMeshRenderers = GetComponentsInChildren<SkinnedMeshRenderer>();
-        
-        Vector3 explosionCenter = transform.position;
-        
-        // Обрабатываем обычные меши
-        foreach (MeshRenderer meshRenderer in meshRenderers)
-        {
-            GameObject part = meshRenderer.gameObject;
-            
-            // Пропускаем сам объект врага
-            if (part == gameObject)
-                continue;
-            
-            // Получаем MeshFilter для создания MeshCollider
-            MeshFilter meshFilter = part.GetComponent<MeshFilter>();
-            if (meshFilter == null || meshFilter.sharedMesh == null)
-                continue;
-            
-            // Отсоединяем от врага
-            part.transform.SetParent(null);
-            
-            // Добавляем Rigidbody
-            Rigidbody rb = part.GetComponent<Rigidbody>();
-            if (rb == null)
-            {
-                rb = part.AddComponent<Rigidbody>();
-                rb.mass = 1f;
-                rb.drag = 0.5f;
-                rb.angularDrag = 0.5f;
-            }
-            
-            // Добавляем MeshCollider
-            MeshCollider meshCollider = part.GetComponent<MeshCollider>();
-            if (meshCollider == null)
-            {
-                meshCollider = part.AddComponent<MeshCollider>();
-                meshCollider.convex = true; // Обязательно для Rigidbody
-                meshCollider.sharedMesh = meshFilter.sharedMesh;
-            }
-            
-            // Применяем силу взрыва
-            Vector3 direction = (part.transform.position - explosionCenter).normalized;
-            if (direction.sqrMagnitude < 0.01f)
-                direction = Random.insideUnitSphere;
-            
-            rb.AddForce(direction * deathExplosionForce + Vector3.up * (deathExplosionForce * 0.5f), ForceMode.VelocityChange);
-            rb.AddTorque(Random.insideUnitSphere * deathExplosionForce, ForceMode.VelocityChange);
-            
-            // Добавляем компонент автоудаления
-            DestroyAfterTime destroyComponent = part.AddComponent<DestroyAfterTime>();
-            destroyComponent.lifetime = partsLifetime;
-            
-            Debug.Log($"[Bot] Часть {part.name} отсоединена и получила физику");
-        }
-        
-        // Обрабатываем skinned меши (для персонажей с анимацией)
-        foreach (SkinnedMeshRenderer skinnedRenderer in skinnedMeshRenderers)
-        {
-            GameObject part = skinnedRenderer.gameObject;
-            
-            // Пропускаем сам объект врага
-            if (part == gameObject)
-                continue;
-            
-            // Создаем статичный меш из skinned mesh
-            Mesh bakedMesh = new Mesh();
-            skinnedRenderer.BakeMesh(bakedMesh);
-            
-            // Отключаем SkinnedMeshRenderer
-            skinnedRenderer.enabled = false;
-            
-            // Добавляем обычный MeshRenderer и MeshFilter
-            MeshFilter meshFilter = part.GetComponent<MeshFilter>();
-            if (meshFilter == null)
-                meshFilter = part.AddComponent<MeshFilter>();
-            meshFilter.mesh = bakedMesh;
-            
-            MeshRenderer meshRenderer = part.GetComponent<MeshRenderer>();
-            if (meshRenderer == null)
-                meshRenderer = part.AddComponent<MeshRenderer>();
-            meshRenderer.materials = skinnedRenderer.materials;
-            
-            // Отсоединяем от врага
-            part.transform.SetParent(null);
-            
-            // Добавляем Rigidbody
-            Rigidbody rb = part.GetComponent<Rigidbody>();
-            if (rb == null)
-            {
-                rb = part.AddComponent<Rigidbody>();
-                rb.mass = 1f;
-                rb.drag = 0.5f;
-                rb.angularDrag = 0.5f;
-            }
-            
-            // Добавляем MeshCollider
-            MeshCollider meshCollider = part.GetComponent<MeshCollider>();
-            if (meshCollider == null)
-            {
-                meshCollider = part.AddComponent<MeshCollider>();
-                meshCollider.convex = true;
-                meshCollider.sharedMesh = bakedMesh;
-            }
-            
-            // Применяем силу взрыва
-            Vector3 direction = (part.transform.position - explosionCenter).normalized;
-            if (direction.sqrMagnitude < 0.01f)
-                direction = Random.insideUnitSphere;
-            
-            rb.AddForce(direction * deathExplosionForce + Vector3.up * (deathExplosionForce * 0.5f), ForceMode.VelocityChange);
-            rb.AddTorque(Random.insideUnitSphere * deathExplosionForce, ForceMode.VelocityChange);
-            
-            // Добавляем компонент автоудаления
-            DestroyAfterTime destroyComponent = part.AddComponent<DestroyAfterTime>();
-            destroyComponent.lifetime = partsLifetime;
-            
-            Debug.Log($"[Bot] Skinned часть {part.name} отсоединена и получила физику");
-        }
-        
-        // Отключаем animator чтобы не мешал
-        if (animator != null)
-            animator.enabled = false;
-    }
-    
-    private void OnEnemyDamageTaken(float damage)
-    {
-        Debug.Log($"[Bot] {botID} получил {damage} урона. Осталось здоровья: {healthComponent.CurrentHealth}/{healthComponent.MaxHealth}");
-        
-        // Здесь можно добавить визуальные/звуковые эффекты получения урона:
-        // - Воспроизвести анимацию получения урона
+        // Можно добавить эффекты урона:
         // - Звук удара
         // - Эффект крови/искр
         // - Красная вспышка на модели
     }
     
-    private void UpdateServices()
+    /// <summary>
+    /// Взрывает части врага при смерти
+    /// </summary>
+    void ExplodeEnemyParts()
     {
-        if (!isInitialized)
-            return;
-            
-        movementService.Update();
-        aiStateMachine.Update();
+        // Находим все меш рендереры в детях
+        MeshRenderer[] meshRenderers = GetComponentsInChildren<MeshRenderer>();
+        SkinnedMeshRenderer[] skinnedMeshRenderers = GetComponentsInChildren<SkinnedMeshRenderer>();
         
-        // Обновляем сервис автоспавна
-        AutoSpawnService.Instance?.TickSpawnable(this, Time.deltaTime);
+        // Обрабатываем обычные меш рендереры
+        foreach (MeshRenderer meshRenderer in meshRenderers)
+        {
+            if (meshRenderer.transform == transform) continue; // Пропускаем основной объект
+            
+            ExplodePart(meshRenderer.gameObject);
+        }
+        
+        // Обрабатываем скин меш рендереры
+        foreach (SkinnedMeshRenderer skinnedMeshRenderer in skinnedMeshRenderers)
+        {
+            if (skinnedMeshRenderer.transform == transform) continue; // Пропускаем основной объект
+            
+            ExplodePart(skinnedMeshRenderer.gameObject);
+        }
+        
+        // Отключаем аниматор
+        if (animator != null)
+        {
+            animator.enabled = false;
+        }
     }
     
-    private void HandleMovement()
+    /// <summary>
+    /// Взрывает отдельную часть
+    /// </summary>
+    void ExplodePart(GameObject part)
     {
-        if (!isInitialized)
-            return;
-            
-        Vector3 moveDirection = aiStateMachine.GetMoveDirection();
+        // Отсоединяем от родителя
+        part.transform.SetParent(null);
         
-        // Обновляем pathfinding service с текущим направлением движения
-        pathfindingService.Update(moveDirection);
+        // Добавляем Rigidbody
+        Rigidbody rb = part.AddComponent<Rigidbody>();
+        rb.mass = 1f;
+        rb.drag = 0.5f;
+        rb.angularDrag = 0.5f;
         
-        // Проверяем нужно ли прыгать
-        if (aiStateMachine.ShouldJump())
-        {
-            movementService.InitiateJump();
-        }
+        // Добавляем MeshCollider
+        MeshCollider meshCollider = part.AddComponent<MeshCollider>();
+        meshCollider.convex = true;
         
-        // Блокируем движение ТОЛЬКО во время подготовки к прыжку (0.1s)
-        // Во время полета и кулдауна после приземления - бот ДВИГАЕТСЯ!
-        if (movementService.IsPreparingJump)
-        {
-            moveDirection = Vector3.zero;
-        }
+        // Применяем взрывную силу
+        Vector3 explosionDirection = (part.transform.position - transform.position).normalized;
+        rb.AddForce(explosionDirection * deathExplosionForce, ForceMode.Impulse);
         
-        movementService.HandleMovement(moveDirection);
+        // Добавляем случайное вращение
+        rb.AddTorque(Random.insideUnitSphere * deathExplosionForce, ForceMode.Impulse);
+        
+        // Добавляем компонент для автоматического удаления
+        DestroyAfterTime destroyAfterTime = part.AddComponent<DestroyAfterTime>();
+        destroyAfterTime.lifetime = partsLifetime;
     }
-
-    // Публичные методы для внешнего управления
-    public void SetTarget(Transform newTarget)
+    
+    /// <summary>
+    /// Удаляет основной объект врага через заданное время
+    /// </summary>
+    IEnumerator DestroyCorpseAfterDelay()
     {
-        target = newTarget;
-        
-        if (aiStateMachine != null)
-        {
-            aiStateMachine.SetTarget(newTarget);
-        }
+        yield return new WaitForSeconds(corpseLifetime);
+        Destroy(gameObject);
+    }
+    
+    /// <summary>
+    /// Регистрирует бота в системе автоспавна
+    /// </summary>
+    void RegisterWithAutoSpawn()
+    {
+        AutoSpawnService.Instance?.RegisterSpawnable(this);
+    }
+    
+    // Реализация ISpawnable
+    public string GetSpawnableID()
+    {
+        return botID;
+    }
+    
+    public Transform GetTransform()
+    {
+        return transform;
+    }
+    
+    public GameObject GetGameObject()
+    {
+        return gameObject;
+    }
+    
+    public bool IsGrounded()
+    {
+        return voxelController?.GetBotData()?.isGrounded ?? false;
     }
     
     // Методы для работы с оружием
@@ -429,90 +506,42 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         return target;
     }
     
+    /// <summary>
+    /// Получает текущее состояние ИИ бота
+    /// </summary>
     public AIState GetCurrentState()
     {
-        return aiStateMachine != null ? aiStateMachine.CurrentState : AIState.Idle;
+        if (hasDetectedPlayer)
+        {
+            float distanceToPlayer = Vector3.Distance(transform.position, target.position);
+            if (distanceToPlayer <= voxelController.config.attackRange)
+            {
+                return AIState.Attack;
+            }
+            else
+            {
+                return AIState.Chase;
+            }
+        }
+        else
+        {
+            return AIState.Patrol;
+        }
     }
     
-    public EnemyPathfindingService GetPathfindingService()
+    /// <summary>
+    /// Получает данные бота для проверки попаданий
+    /// </summary>
+    public VoxelBotData GetBotData()
     {
-        return pathfindingService;
+        return voxelController?.GetBotData();
     }
     
-    // ISpawnable интерфейс
-    public string GetSpawnableID()
+    /// <summary>
+    /// Проверяет попадание в бота
+    /// </summary>
+    public bool CheckHit(Vector3 hitPoint, float radius)
     {
-        return botID;
-    }
-    
-    public Transform GetTransform()
-    {
-        return transform;
-    }
-    
-    public GameObject GetGameObject()
-    {
-        return gameObject;
-    }
-    
-    public bool IsGrounded()
-    {
-        return movementService.IsGrounded;
-    }
-    
-    private void RegisterWithAutoSpawn()
-    {
-        AutoSpawnService.Instance?.RegisterSpawnable(this);
-    }
-    
-    // Создание конфигураций по умолчанию
-    private EnemyMovementConfig CreateDefaultMovementConfig()
-    {
-        EnemyMovementConfig config = ScriptableObject.CreateInstance<EnemyMovementConfig>();
-        config.moveSpeed = 5f;
-        config.turnSpeed = 10f;
-        config.turnThreshold = 0.1f;
-        config.jumpHeight = 3f;
-        config.jumpPrepareTime = 0.1f;
-        config.jumpCooldownTime = 0.5f;
-        config.gravity = -9.81f;
-        config.groundCheckDistance = 0.2f;
-        config.coyoteTime = 0.1f;
-        config.speedParameter = "Speed";
-        config.isGroundedParameter = "IsGrounded";
-        return config;
-    }
-    
-    private EnemyPathfindingConfig CreateDefaultPathfindingConfig()
-    {
-        EnemyPathfindingConfig config = ScriptableObject.CreateInstance<EnemyPathfindingConfig>();
-        config.usePathfinding = true;
-        config.pathUpdateInterval = 1f;
-        config.maxPathLength = 50;
-        config.waypointReachDistance = 1.5f;
-        config.stuckCheckTime = 2f;
-        config.stuckDistanceThreshold = 1f;
-        config.stuckAreaSize = 4f;
-        config.maxStuckAttempts = 3;
-        config.unstuckPatrolTime = 5f;
-        config.oscillationThreshold = 1.5f;
-        return config;
-    }
-    
-    private EnemyAIConfig CreateDefaultAIConfig()
-    {
-        EnemyAIConfig config = ScriptableObject.CreateInstance<EnemyAIConfig>();
-        config.detectionRange = 15f;
-        config.attackRange = 3f;
-        config.patrolRadius = 10f;
-        config.minPatrolDistance = 3f;
-        config.patrolWaitTime = 2f;
-        config.minPatrolPointsBeforeRest = 3;
-        config.maxPatrolPointsBeforeRest = 6;
-        config.minIdleTime = 30f;
-        config.maxIdleTime = 120f;
-        config.returnToStartThreshold = 1.5f;
-        config.maxFallingTime = 10f;
-        return config;
+        return voxelController?.CheckHit(hitPoint, radius) ?? false;
     }
 }

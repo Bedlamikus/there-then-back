@@ -937,6 +937,64 @@ public class VoxelWorld : MonoBehaviour
         return new Vector3(GetWorldWidth(), GetWorldHeight(), GetWorldDepth());
     }
     
+    /// <summary>
+    /// Конвертирует мировые координаты в воксельные координаты
+    /// </summary>
+    public static Vector3Int WorldToVoxel(Vector3 worldPosition)
+    {
+        return new Vector3Int(
+            Mathf.FloorToInt(worldPosition.x),
+            Mathf.FloorToInt(worldPosition.y),
+            Mathf.FloorToInt(worldPosition.z)
+        );
+    }
+    
+    /// <summary>
+    /// Конвертирует воксельные координаты в мировые координаты
+    /// </summary>
+    public static Vector3 VoxelToWorld(Vector3Int voxelPosition)
+    {
+        return new Vector3(
+            voxelPosition.x + 0.5f,
+            voxelPosition.y + 0.5f,
+            voxelPosition.z + 0.5f
+        );
+    }
+    
+    /// <summary>
+    /// Проверяет есть ли блок в указанных воксельных координатах
+    /// </summary>
+    public static bool IsVoxelSolid(Vector3Int voxelPosition)
+    {
+        if (Instance == null) return false;
+        
+        // Вычисляем координаты чанка
+        int chunkX = Mathf.FloorToInt(voxelPosition.x / VoxelChunk16.WIDTH);
+        int chunkZ = Mathf.FloorToInt(voxelPosition.z / VoxelChunk16.DEPTH);
+        
+        // Проверяем есть ли чанк
+        if (!Instance._chunks.TryGetValue((chunkX, chunkZ), out ChunkEntry chunk))
+        {
+            return false; // Чанк не существует
+        }
+        
+        // Вычисляем локальные координаты в чанке
+        int localX = voxelPosition.x - chunkX * VoxelChunk16.WIDTH;
+        int localY = voxelPosition.y;
+        int localZ = voxelPosition.z - chunkZ * VoxelChunk16.DEPTH;
+        
+        // Проверяем границы
+        if (localX < 0 || localX >= VoxelChunk16.WIDTH ||
+            localY < 0 || localY >= VoxelChunk16.HEIGHT ||
+            localZ < 0 || localZ >= VoxelChunk16.DEPTH)
+        {
+            return false;
+        }
+        
+        // Проверяем тип блока
+        return chunk.data[localX, localY, localZ] != AIR;
+    }
+    
     // === Публичный метод для проверки наличия блока ===
     public bool HasBlockAt(int wx, int wy, int wz)
     {

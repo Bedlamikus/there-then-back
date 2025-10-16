@@ -1034,6 +1034,7 @@ GameObject:
   - component: {fileID: 3008468505300814615}
   - component: {fileID: 2071611320351894911}
   - component: {fileID: 2510119719213847685}
+  - component: {fileID: 4074595813306363480}
   m_Layer: 6
   m_Name: Enemy
   m_TagString: Untagged
@@ -1076,7 +1077,7 @@ CapsuleCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_Radius: 0.5
   m_Height: 2
@@ -1099,7 +1100,7 @@ CharacterController:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Height: 2
   m_Radius: 0.5
@@ -1120,16 +1121,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  movementConfig: {fileID: 11400000, guid: 5a37bb5a3572e5d458d016db46fb76fb, type: 2}
-  pathfindingConfig: {fileID: 11400000, guid: 3ac17f59fcbe29546931bbbbb986201f, type: 2}
-  aiConfig: {fileID: 11400000, guid: ba58c22950fe11846ba78fc30cb4aed1, type: 2}
-  controller: {fileID: 8039255882697157949}
-  animator: {fileID: 6740742537238954059}
   turret: {fileID: 1945766891092417179}
   weaponBarrel: {fileID: 2327516486087737101}
   shootPoint: {fileID: 6748206111318845224}
   botID: 
-  healthComponent: {fileID: 0}
+  healthComponent: {fileID: 2071611320351894911}
   deathExplosionForce: 5
   deathExplosionRadius: 2
   corpseLifetime: 10
@@ -1192,6 +1188,21 @@ MonoBehaviour:
   healthCanvas: {fileID: 0}
   healthBarImage: {fileID: 0}
   backgroundImage: {fileID: 0}
+--- !u!114 &4074595813306363480
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5506370006722563975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e34bfbbe2d3f6a347838efa4d69f68f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  config: {fileID: 11400000, guid: cf593dd0b4f811148859b305b465ff5b, type: 2}
+  botId: 
+  animator: {fileID: 6740742537238954059}
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0
