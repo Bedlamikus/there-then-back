@@ -12,6 +12,7 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     [Header("Bot Identity")]
     public string botID;
     
+    
     [Header("Health")]
     [Tooltip("Компонент здоровья бота")]
     public HealthComponent healthComponent;
@@ -28,7 +29,9 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     // Компоненты
     private VoxelBotController voxelController;
+    private VoxelBotAI voxelBotAI;
     private EnemyWeaponController weaponController;
+    private PlayerController playerController;
     private Animator animator;
     
     // Цель и состояние
@@ -38,7 +41,6 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     
     // Система кулинга
     private float nextCullingCheckTime = 0f;
-    private PlayerController playerController;
     
     // AI состояние
     private float lastDetectionTime = 0f;
@@ -80,15 +82,26 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         animator = GetComponent<Animator>();
         weaponController = GetComponent<EnemyWeaponController>();
         
-        // Создаем VoxelBotController
-        voxelController = gameObject.AddComponent<VoxelBotController>();
-        voxelController.botId = botID;
-        
-        // Проверяем что конфиг назначен
-        if (voxelController.config == null)
+        // Получаем существующий VoxelBotController
+        voxelController = GetComponent<VoxelBotController>();
+        if (voxelController == null)
         {
-            Debug.LogError($"[EnemyBot] VoxelBotConfig not assigned to VoxelBotController for {botID}!");
+            Debug.LogError($"[EnemyBot] VoxelBotController not found on {botID}! Please add VoxelBotController component.");
+            return;
         }
+        
+        // Получаем существующий VoxelBotAI
+        voxelBotAI = GetComponent<VoxelBotAI>();
+        if (voxelBotAI == null)
+        {
+            Debug.LogError($"[EnemyBot] VoxelBotAI not found on {botID}! Please add VoxelBotAI component.");
+            return;
+        }
+        
+        // Связываем компоненты
+        voxelBotAI.voxelController = voxelController;
+        voxelBotAI.animator = animator;
+        
         
         // Инициализируем здоровье
         InitializeHealth();
@@ -101,7 +114,7 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         
         isInitialized = true;
     }
-    
+
     /// <summary>
     /// Инициализирует бота с целью (вызывается из EnemySpawner)
     /// </summary>
@@ -130,12 +143,41 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     {
         target = newTarget;
         
-        // Устанавливаем цель для VoxelBotController
+        // Устанавливаем цель для VoxelBotAI (новый мозг)
+        if (voxelBotAI != null)
+        {
+            voxelBotAI.SetTarget(target);
+        }
+        
+        // Устанавливаем цель для VoxelBotController (старый режим, для совместимости)
         if (voxelController != null)
         {
             voxelController.SetTarget(target);
         }
+    }
+    
+    /// <summary>
+    /// Инициализирует бота с целью (вызывается из EnemySpawner)
+    /// </summary>
+    public void InitializeWithTarget(Transform targetPlayer)
+    {
+        // Инициализируем только если еще не инициализирован
+        if (!isInitialized)
+        {
+        InitializeBot();
+        }
         
+        // Устанавливаем цель
+        if (targetPlayer != null)
+        {
+            SetTarget(targetPlayer);
+        }
+        
+        // Инициализируем ИИ с целью
+        if (voxelBotAI != null)
+        {
+            voxelBotAI.InitializeWithTarget(targetPlayer);
+        }
     }
     
     /// <summary>
@@ -182,6 +224,18 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     /// </summary>
     void UpdateAI()
     {
+        // Новая система ИИ управляется через VoxelBotAI
+        if (voxelBotAI != null)
+        {
+            // VoxelBotAI сам управляет всем, нам нужно только найти игрока
+            if (target == null)
+            {
+                FindPlayer();
+            }
+            return;
+        }
+        
+        // Старая система ИИ (для совместимости)
         if (target == null)
         {
             // Ищем игрока
@@ -356,6 +410,11 @@ public class EnemyBot : MonoBehaviour, ISpawnable
             }
         }
         
+        // Останавливаем ИИ
+        if (voxelBotAI != null)
+        {
+            voxelBotAI.ResetAI();
+        }
         
         // Останавливаем движение
         if (voxelController != null)

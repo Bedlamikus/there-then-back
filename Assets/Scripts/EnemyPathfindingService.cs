@@ -64,7 +64,7 @@ public class EnemyPathfindingService
         voxelWorld = Object.FindObjectOfType<VoxelWorld>();
     }
     
-    public void Update(Vector3 currentMoveDirection)
+    public virtual void Update(Vector3 currentMoveDirection)
     {
         if (isRecoveringFromStuck)
         {
@@ -104,7 +104,7 @@ public class EnemyPathfindingService
         }
     }
     
-    public Vector3 GetMoveDirection(Vector3 targetPosition, bool usePathfinding)
+    public virtual Vector3 GetMoveDirection(Vector3 targetPosition, bool usePathfinding)
     {
         if (usePathfinding && currentPath != null && currentPath.Count > 0)
         {
@@ -118,13 +118,13 @@ public class EnemyPathfindingService
         }
     }
     
-    public void StartPathfindingToTarget(Transform target)
+    public virtual void StartPathfindingToTarget(Transform target)
     {
         if (target == null) return;
         StartPathfindingToPosition(target.position);
     }
     
-    public void StartPathfindingToPosition(Vector3 targetPosition)
+    public virtual void StartPathfindingToPosition(Vector3 targetPosition)
     {
         if (voxelWorld == null) return;
         
@@ -137,13 +137,13 @@ public class EnemyPathfindingService
         lastPathUpdateTime = Time.time;
     }
     
-    public void StopPathfinding()
+    public virtual void StopPathfinding()
     {
         currentPath = null;
         currentWaypointIndex = 0;
     }
     
-    public bool CheckOscillationNearTarget(Vector3 patrolTarget, float currentDistance)
+    public virtual bool CheckOscillationNearTarget(Vector3 patrolTarget, float currentDistance)
     {
         // Проверяем только если цель не изменилась
         if (patrolTarget != lastPatrolTarget)
@@ -173,7 +173,7 @@ public class EnemyPathfindingService
         return false;
     }
     
-    public Vector3 FindSafePatrolPoint(Vector3 startPosition, float patrolRadius, float minPatrolDistance)
+    public virtual Vector3 FindSafePatrolPoint(Vector3 startPosition, float patrolRadius, float minPatrolDistance)
     {
         int maxAttempts = 10;
         
@@ -219,9 +219,19 @@ public class EnemyPathfindingService
             
             Vector3 safePoint = FindSafeHeightForPoint(randomPoint, startPosition);
             
+            // ИСПРАВЛЕНИЕ: Дополнительная проверка что точка не слишком высокая
             if (safePoint != Vector3.zero)
             {
-                return safePoint;
+                // Проверяем что найденная точка не слишком далеко от земли
+                Vector3Int safeVoxel = VoxelWorld.WorldToVoxel(safePoint);
+                int groundLevel = FindGroundLevel(safeVoxel.x, safeVoxel.z);
+                
+                // Если точка не более чем на 10 блоков выше земли - принимаем её
+                if (safePoint.y <= groundLevel + 10)
+                {
+                    return safePoint;
+                }
+                // Иначе продолжаем поиск
             }
         }
         
@@ -317,12 +327,26 @@ public class EnemyPathfindingService
         int maxSteps = config.maxPathLength;
         int steps = 0;
         
-        while (Vector3.Distance(current, end) > 2f && steps < maxSteps) // Увеличено до 2.0f
+        // Получаем размеры бота для более точного планирования
+        float botDiameter = 0.7f;
+        float botHeight = 1.8f;
+        
+        VoxelBotController botController = transform.GetComponent<VoxelBotController>();
+        if (botController != null && botController.config != null)
+        {
+            botDiameter = botController.config.botDiameter;
+            botHeight = botController.config.botHeight;
+        }
+        
+        // Уменьшаем шаг для более точного пути
+        float stepSize = Mathf.Max(1.0f, botDiameter); // Шаг не меньше диаметра бота
+        
+        while (Vector3.Distance(current, end) > stepSize && steps < maxSteps)
         {
             Vector3 direction = (end - current).normalized;
-            Vector3 nextStep = current + direction * 2f; // Шаг в 2 блока
+            Vector3 nextStep = current + direction * stepSize;
             
-            // Ищем проходимую позицию с учетом высоты
+            // Ищем проходимую позицию с учетом размера бота
             Vector3 walkableStep = FindWalkablePosition(nextStep);
             
             if (walkableStep != Vector3.zero)
@@ -331,16 +355,18 @@ public class EnemyPathfindingService
             }
             else
             {
-                // Пытаемся обойти препятствие в 4 направлениях
+                // Пытаемся обойти препятствие в 8 направлениях (включая диагонали)
                 Vector3[] directions = {
                     new Vector3(1, 0, 0), new Vector3(-1, 0, 0),
-                    new Vector3(0, 0, 1), new Vector3(0, 0, -1)
+                    new Vector3(0, 0, 1), new Vector3(0, 0, -1),
+                    new Vector3(0.7f, 0, 0.7f), new Vector3(-0.7f, 0, 0.7f),
+                    new Vector3(0.7f, 0, -0.7f), new Vector3(-0.7f, 0, -0.7f)
                 };
                 
                 bool foundAlternative = false;
                 foreach (Vector3 dir in directions)
                 {
-                    Vector3 alternative = current + dir * 2f;
+                    Vector3 alternative = current + dir.normalized * stepSize;
                     Vector3 walkableAlternative = FindWalkablePosition(alternative);
                     
                     if (walkableAlternative != Vector3.zero)
@@ -354,7 +380,7 @@ public class EnemyPathfindingService
                 if (!foundAlternative)
                 {
                     // Пробуем прыжок вверх
-                    Vector3 jumpUp = current + direction * 2f + Vector3.up * 2f;
+                    Vector3 jumpUp = current + direction * stepSize + Vector3.up * 2f;
                     Vector3 walkableJump = FindWalkablePosition(jumpUp);
                     
                     if (walkableJump != Vector3.zero)
@@ -379,12 +405,13 @@ public class EnemyPathfindingService
     {
         if (voxelWorld == null) return targetPosition;
         
-        int blockX = Mathf.FloorToInt(targetPosition.x);
-        int blockZ = Mathf.FloorToInt(targetPosition.z);
-        int startY = Mathf.FloorToInt(targetPosition.y);
+        // Округляем до ближайшего центра блока для более точной проверки
+        int blockX = Mathf.RoundToInt(targetPosition.x);
+        int blockZ = Mathf.RoundToInt(targetPosition.z);
+        int startY = Mathf.RoundToInt(targetPosition.y);
         
-        // Ищем проходимую высоту в диапазоне ±10 блоков от целевой Y
-        for (int yOffset = 0; yOffset <= 10; yOffset++)
+        // Ищем проходимую высоту в диапазоне ±15 блоков от целевой Y
+        for (int yOffset = 0; yOffset <= 15; yOffset++)
         {
             // Проверяем сначала вверх, потом вниз
             int[] yChecks = { startY + yOffset, startY - yOffset };
@@ -393,12 +420,11 @@ public class EnemyPathfindingService
             {
                 if (checkY < 0 || checkY >= voxelWorld.GetWorldHeight()) continue;
                 
-                Vector3 testPos = new Vector3(blockX + 0.5f, checkY + 0.5f, blockZ + 0.5f);
-                
-                // Проверяем что позиция проходима (нет блока, есть земля под ногами, есть место над головой)
+                // Проверяем проходимость с учетом размера бота
                 if (IsWalkablePosition(blockX, checkY, blockZ))
                 {
-                    return testPos;
+                    // Возвращаем позицию в центре блока
+                    return new Vector3(blockX + 0.5f, checkY + 0.5f, blockZ + 0.5f);
                 }
             }
         }
@@ -410,15 +436,57 @@ public class EnemyPathfindingService
     {
         if (voxelWorld == null) return false;
         
-        // Проверяем что в этой позиции нет блока (можем стоять)
-        if (voxelWorld.HasBlockAt(blockX, blockY, blockZ)) return false;
+        // Получаем размеры бота из конфига (если доступен)
+        float botDiameter = 0.7f; // По умолчанию
+        float botHeight = 1.8f;   // По умолчанию
         
-        // Проверяем что есть земля под ногами
-        if (!voxelWorld.HasBlockAt(blockX, blockY - 1, blockZ)) return false;
+        // Пытаемся получить размеры из VoxelBotController
+        VoxelBotController botController = transform.GetComponent<VoxelBotController>();
+        if (botController != null && botController.config != null)
+        {
+            botDiameter = botController.config.botDiameter;
+            botHeight = botController.config.botHeight;
+        }
         
-        // Проверяем что есть место над головой (2 блока)
-        if (voxelWorld.HasBlockAt(blockX, blockY + 1, blockZ)) return false;
-        if (voxelWorld.HasBlockAt(blockX, blockY + 2, blockZ)) return false;
+        // Вычисляем количество блоков для проверки
+        int radiusBlocks = Mathf.CeilToInt(botDiameter / 2f); // Радиус в блоках
+        int heightBlocks = Mathf.CeilToInt(botHeight);        // Высота в блоках
+        
+        // Проверяем все блоки в области бота
+        for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
+        {
+            for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
+            {
+                for (int dy = 0; dy <= heightBlocks; dy++)
+                {
+                    int checkX = blockX + dx;
+                    int checkY = blockY + dy;
+                    int checkZ = blockZ + dz;
+                    
+                    // Проверяем что в этой позиции нет блока (можем стоять)
+                    if (voxelWorld.HasBlockAt(checkX, checkY, checkZ)) return false;
+                }
+            }
+        }
+        
+        // Проверяем что есть земля под ногами (вся область под ботом)
+        bool hasGround = false;
+        for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
+        {
+            for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
+            {
+                int checkX = blockX + dx;
+                int checkZ = blockZ + dz;
+                
+                if (voxelWorld.HasBlockAt(checkX, blockY - 1, checkZ))
+                {
+                    hasGround = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!hasGround) return false;
         
         return true;
     }
@@ -522,36 +590,67 @@ public class EnemyPathfindingService
     
     private Vector3 FindSafeHeightForPoint(Vector3 point, Vector3 startPosition)
     {
-        // ВАЖНО: Округляем до центра блока (0.5, 1.5, 2.5 и т.д.)
-        int blockX = Mathf.FloorToInt(point.x);
-        int blockZ = Mathf.FloorToInt(point.z);
+        // Округляем до ближайшего центра блока для более точной проверки
+        int blockX = Mathf.RoundToInt(point.x);
+        int blockZ = Mathf.RoundToInt(point.z);
         float centerX = blockX + 0.5f;
         float centerZ = blockZ + 0.5f;
         
-        int startY = Mathf.FloorToInt(startPosition.y);
-        int minY = Mathf.Max(0, startY - 20); // Не ниже 0
-        int maxY = Mathf.Min(voxelWorld != null ? voxelWorld.GetWorldHeight() - 3 : 125, startY + 10); // Проверяем и вверх
+        // ИСПРАВЛЕНИЕ: Находим уровень земли для этого блока
+        int groundLevel = FindGroundLevel(blockX, blockZ);
+        int startY = Mathf.RoundToInt(startPosition.y);
         
-        // Ищем проходимую высоту сначала вниз, потом вверх
-        for (int y = startY; y >= minY; y--)
+        // ИСПРАВЛЕНИЕ: Ограничиваем поиск разумными пределами
+        int minY = Mathf.Max(0, groundLevel - 5); // Не ниже чем на 5 блоков под землей
+        int maxY = Mathf.Min(
+            voxelWorld != null ? voxelWorld.GetWorldHeight() - 3 : 125, 
+            Mathf.Max(groundLevel + 10, startY + 5) // Не выше чем на 10 блоков над землей или на 5 от старта
+        );
+        
+        // ИСПРАВЛЕНИЕ: Приоритизируем поиск ближе к земле
+        // Сначала ищем от уровня земли вверх (более безопасно)
+        for (int y = groundLevel; y <= maxY; y++)
         {
             if (IsWalkablePosition(blockX, y, blockZ))
             {
-                // Возвращаем позицию в центре блока
+                // Дополнительная проверка: не слишком ли высоко?
+                if (y <= groundLevel + 15) // Максимум на 15 блоков над землей
+                {
+                    return new Vector3(centerX, y + 0.5f, centerZ);
+                }
+            }
+        }
+        
+        // Если не нашли вверх от земли, пробуем вниз от земли
+        for (int y = groundLevel - 1; y >= minY; y--)
+        {
+            if (IsWalkablePosition(blockX, y, blockZ))
+            {
                 return new Vector3(centerX, y + 0.5f, centerZ);
             }
         }
         
-        // Если не нашли вниз, пробуем вверх
-        for (int y = startY + 1; y <= maxY; y++)
+        // Если ничего не нашли - возвращаем точку на уровне земли
+        return new Vector3(centerX, groundLevel + 0.5f, centerZ);
+    }
+    
+    /// <summary>
+    /// Находит уровень земли для указанного блока
+    /// </summary>
+    private int FindGroundLevel(int blockX, int blockZ)
+    {
+        if (voxelWorld == null) return 64; // Значение по умолчанию
+        
+        // Ищем самый верхний твердый блок (поверхность земли)
+        for (int y = voxelWorld.GetWorldHeight() - 1; y >= 0; y--)
         {
-            if (IsWalkablePosition(blockX, y, blockZ))
+            if (VoxelWorld.IsVoxelSolid(new Vector3Int(blockX, y, blockZ)))
             {
-                return new Vector3(centerX, y + 0.5f, centerZ);
+                return y + 1; // Возвращаем уровень НАД поверхностью
             }
         }
         
-        return Vector3.zero;
+        return 0; // Если не нашли - возвращаем 0
     }
     
     private bool IsPositionSafe(Vector3 position, Vector3 groundPosition)
@@ -586,16 +685,38 @@ public class EnemyPathfindingService
         Vector3 currentPos = transform.position;
         Vector3 checkDirection = moveDirection.normalized;
         
-        // Проверяем на уровне головы, тела и ног
-        float[] checkHeights = { 0f, 1f, 2f }; // Ноги, тело, голова
+        // Получаем размеры бота из конфига
+        float botDiameter = 0.7f; // По умолчанию
+        float botHeight = 1.8f;   // По умолчанию
         
-        foreach (float height in checkHeights)
+        VoxelBotController botController = transform.GetComponent<VoxelBotController>();
+        if (botController != null && botController.config != null)
         {
-            Vector3 checkPos = currentPos + Vector3.up * height + checkDirection * 1.5f; // 1.5 блока вперед
-            
-            if (HasSolidBlockAt(checkPos))
+            botDiameter = botController.config.botDiameter;
+            botHeight = botController.config.botHeight;
+        }
+        
+        // Вычисляем количество блоков для проверки
+        int radiusBlocks = Mathf.CeilToInt(botDiameter / 2f);
+        int heightBlocks = Mathf.CeilToInt(botHeight);
+        
+        // Проверяем препятствия на разных высотах и по ширине бота
+        for (int dy = 0; dy <= heightBlocks; dy++)
+        {
+            for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
             {
-                return true;
+                for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
+                {
+                    // Вычисляем позицию для проверки
+                    Vector3 offset = new Vector3(dx, dy, dz);
+                    Vector3 checkPos = currentPos + offset + checkDirection * 1.5f; // 1.5 блока вперед
+                    
+                    // Проверяем есть ли препятствие в этой позиции
+                    if (HasSolidBlockAt(checkPos))
+                    {
+                        return true;
+                    }
+                }
             }
         }
         

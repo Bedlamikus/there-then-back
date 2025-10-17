@@ -1,8 +1,11 @@
 using UnityEngine;
 
-public class EnemyMovementService
+/// <summary>
+/// Сервис движения для воксельного мира
+/// Адаптирует EnemyMovementService для работы с VoxelBotController
+/// </summary>
+public class VoxelMovementService
 {
-    private CharacterController controller;
     private Transform transform;
     private EnemyMovementConfig config;
     private Animator animator;
@@ -21,27 +24,26 @@ public class EnemyMovementService
     private float jumpCooldownTimer;
     private bool wasInAirLastFrame; // Для отслеживания приземления
     
-    public virtual bool IsGrounded => _grounded;
-    public virtual Vector3 Velocity => _velocity;
-    public virtual bool IsPreparingJump => isPreparingJump;
+    public bool IsGrounded => _grounded;
+    public Vector3 Velocity => _velocity;
+    public bool IsPreparingJump => isPreparingJump;
     
-    public EnemyMovementService(CharacterController controller, Transform transform, EnemyMovementConfig config, Animator animator)
+    public VoxelMovementService(Transform transform, EnemyMovementConfig config, Animator animator)
     {
-        this.controller = controller;
         this.transform = transform;
         this.config = config;
         this.animator = animator;
         _lastPosition = transform.position;
     }
     
-    public virtual void Update()
+    public void Update()
     {
         GroundCheck();
         UpdateJumpSystem();
         UpdateAnimation();
     }
     
-    public virtual void HandleMovement(Vector3 moveDirection)
+    public void HandleMovement(Vector3 moveDirection)
     {
         float dt = Time.deltaTime;
         
@@ -75,10 +77,13 @@ public class EnemyMovementService
         
         // Движение (применяем скорость к направлению)
         Vector3 move = moveDirection * config.moveSpeed + Vector3.up * _velocity.y;
-        controller.Move(move * dt);
+        
+        // Для воксельного мира движение обрабатывается в VoxelBotController
+        // Здесь мы только обновляем внутреннее состояние
+        _velocity = move;
     }
     
-    public virtual void InitiateJump()
+    public void InitiateJump()
     {
         if (!isPreparingJump && !isJumpCooldown)
         {
@@ -87,14 +92,17 @@ public class EnemyMovementService
         }
     }
     
-    public virtual bool IsPreparingJumpOrCooldown()
+    public bool IsPreparingJumpOrCooldown()
     {
         return isPreparingJump || isJumpCooldown;
     }
     
     private void GroundCheck()
     {
-        if (controller.isGrounded)
+        // Для воксельного мира проверяем через VoxelWorld
+        bool isGroundedInVoxels = IsGroundedInVoxelWorld();
+        
+        if (isGroundedInVoxels)
         {
             _grounded = true;
             _lastGroundTime = Time.time;
@@ -155,8 +163,11 @@ public class EnemyMovementService
         Vector3 horizontalVelocity = transform.position - _lastPosition;
         float speed = horizontalVelocity.magnitude / Time.deltaTime;
         
+        // Нормализуем скорость как у игрока (0 = стоит, 1 = максимальная скорость)
+        float normalizedSpeed = Mathf.Clamp01(speed / config.moveSpeed);
+        
         // Обновляем параметры анимации
-        animator.SetFloat(config.speedParameter, speed);
+        animator.SetFloat(config.speedParameter, normalizedSpeed);
         animator.SetBool(config.isGroundedParameter, _grounded);
         
         _lastPosition = transform.position;
@@ -165,5 +176,16 @@ public class EnemyMovementService
     private bool CanJump()
     {
         return _grounded || Time.time - _lastGroundTime <= config.coyoteTime;
+    }
+    
+    /// <summary>
+    /// Проверяет находится ли бот на земле в воксельном мире
+    /// </summary>
+    private bool IsGroundedInVoxelWorld()
+    {
+        Vector3 footPosition = transform.position - Vector3.up * 0.5f; // Ноги бота
+        Vector3Int footVoxel = VoxelWorld.WorldToVoxel(footPosition);
+        
+        return VoxelWorld.IsVoxelSolid(footVoxel);
     }
 }

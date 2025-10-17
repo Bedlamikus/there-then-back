@@ -1035,6 +1035,7 @@ GameObject:
   - component: {fileID: 2071611320351894911}
   - component: {fileID: 2510119719213847685}
   - component: {fileID: 4074595813306363480}
+  - component: {fileID: 7758775867698566018}
   m_Layer: 6
   m_Name: Enemy
   m_TagString: Untagged
@@ -1203,6 +1204,24 @@ MonoBehaviour:
   config: {fileID: 11400000, guid: cf593dd0b4f811148859b305b465ff5b, type: 2}
   botId: 
   animator: {fileID: 6740742537238954059}
+--- !u!114 &7758775867698566018
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5506370006722563975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 87cc45dcc9096be44a9240f6b21f1a16, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  aiConfig: {fileID: 11400000, guid: ba58c22950fe11846ba78fc30cb4aed1, type: 2}
+  pathfindingConfig: {fileID: 11400000, guid: 3ac17f59fcbe29546931bbbbb986201f, type: 2}
+  movementConfig: {fileID: 11400000, guid: 5a37bb5a3572e5d458d016db46fb76fb, type: 2}
+  voxelController: {fileID: 4074595813306363480}
+  animator: {fileID: 6740742537238954059}
+  target: {fileID: 0}
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0

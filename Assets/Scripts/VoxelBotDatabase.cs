@@ -32,12 +32,25 @@ public class VoxelBotData
         isDead = false;
         config = botConfig;
         
+        // Проверяем что конфиг назначен
+        if (config == null)
+        {
+            Debug.LogError($"[VoxelBotData] VoxelBotConfig is null for bot {id}! Cannot initialize bounds.");
+            return;
+        }
+        
         // Вычисляем границы для проверки попаданий
         UpdateBounds();
     }
     
     public void UpdateBounds()
     {
+        if (config == null)
+        {
+            Debug.LogError($"[VoxelBotData] Cannot update bounds - config is null for bot {botId}!");
+            return;
+        }
+        
         Vector3 center = worldPosition + Vector3.up * (config.botHeight * 0.5f);
         Vector3 size = new Vector3(config.botDiameter, config.botHeight, config.botDiameter);
         bounds = new Bounds(center, size);

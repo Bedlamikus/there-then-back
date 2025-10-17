@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: EnemyAIConfig
   m_EditorClassIdentifier: 
   detectionRange: 15
-  attackRange: 15
+  attackRange: 3
   patrolRadius: 10
   minPatrolDistance: 3
-  patrolWaitTime: 5
+  patrolWaitTime: 2
   minPatrolPointsBeforeRest: 3
   maxPatrolPointsBeforeRest: 6
-  minIdleTime: 5
-  maxIdleTime: 15
+  minIdleTime: 30
+  maxIdleTime: 120
   returnToStartThreshold: 1.5
   maxFallingTime: 10
