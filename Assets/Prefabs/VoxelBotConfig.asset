@@ -12,16 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e969fedac201680458a5f5b736c3de8c, type: 3}
   m_Name: VoxelBotConfig
   m_EditorClassIdentifier: 
-  botDiameter: 0.7
-  botHeight: 1.8
+  botDiameterVoxels: 1
+  botHeightVoxels: 2
   moveSpeed: 3
+  turnSpeed: 180
   jumpHeight: 1.5
-  jumpDistance: 2.5
-  maxPathfindingDistance: 50
-  goalReachDistance: 0.5
-  pathUpdateInterval: 0.5
-  detectionRadius: 15
-  attackRange: 10
-  gravity: 9.81
-  fallSpeed: 5
-  groundCheckHeight: 0.1
+  jumpDistanceVoxels: 2
+  jumpTrajectoryPoints: 10
+  gravity: -9.81
+  maxFallSpeed: 20
+  patrolRadiusVoxels: 10
+  maxPathfindingDistanceVoxels: 20
+  detectionRangeVoxels: 15
+  attackRangeVoxels: 3
+  patrolSearchAttempts: 10

@@ -51,8 +51,8 @@ public class VoxelBotData
             return;
         }
         
-        Vector3 center = worldPosition + Vector3.up * (config.botHeight * 0.5f);
-        Vector3 size = new Vector3(config.botDiameter, config.botHeight, config.botDiameter);
+        Vector3 center = worldPosition + Vector3.up * (config.botHeightVoxels * 0.5f);
+        Vector3 size = new Vector3(config.botDiameterVoxels, config.botHeightVoxels, config.botDiameterVoxels);
         bounds = new Bounds(center, size);
     }
     

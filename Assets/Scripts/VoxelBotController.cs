@@ -1,442 +1,101 @@
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
 
-/// <summary>
-/// Контроллер движения бота по вокселям
-/// </summary>
 public class VoxelBotController : MonoBehaviour
 {
     [Header("Configuration")]
     public VoxelBotConfig config;
     
-    [Header("Bot Identity")]
-    public string botId;
-    
-    [Header("Animation")]
+    [Header("Components")]
     public Animator animator;
     
-    // Компоненты
-    private VoxelBotData botData;
-    private VoxelPathfinding pathfinding;
-    private Transform target;
+    // Movement state
+    private Vector3 velocity;
+    private bool isGrounded;
+    private bool isJumping;
+    private bool isFalling;
     
-    // Состояние движения
-    private List<Vector3Int> currentPath = new List<Vector3Int>();
-    private int currentPathIndex = 0;
-    private Vector3 targetWorldPosition;
-    private bool isMoving = false;
-    private bool isJumping = false;
-    private float jumpStartTime;
+    // Jump state
     private Vector3 jumpStartPosition;
     private Vector3 jumpTargetPosition;
+    private float jumpStartTime;
+    private List<Vector3> jumpTrajectory;
+    private int currentTrajectoryIndex;
+    
+    // AI control
+    private Vector3 aiMoveDirection;
+    private bool aiShouldJump;
+    private bool isAIControlled;
+    
+    // Physics
     private Vector3 lastPosition;
-    private Vector3 currentVelocity;
-    
-    // Физика и гравитация
-    private Vector3 velocity = Vector3.zero;
-    private bool isGrounded = false;
-    private float lastGroundCheckTime = 0f;
-    private const float groundCheckInterval = 0.1f;
-    
-    // Состояние ИИ
-    private bool hasTarget = false;
-    private float lastPathUpdateTime = 0f;
-    
-    // Команды от ИИ
-    private Vector3 aiMoveDirection = Vector3.zero;
-    private bool aiShouldJump = false;
-    private bool isAIControlled = false;
+    private bool wasGrounded = true; // Track previous ground status for debug
     
     void Start()
     {
-        // Генерируем ID если не задан
-        if (string.IsNullOrEmpty(botId))
-        {
-            botId = $"Bot_{GetInstanceID()}";
-        }
-        
-        // Инициализируем компоненты
-        InitializeComponents();
-        
-        // Регистрируем бота в базе данных
-        VoxelBotDatabase.Instance.RegisterBot(botId, transform.position, config);
-        
-        // Инициализируем позицию для вычисления скорости
-        lastPosition = transform.position;
-        
-        Debug.Log($"[VoxelBotController] Initialized bot: {botId}");
+        InitializeBot();
     }
     
     void Update()
     {
-        if (botData == null) return;
+        if (config == null) return;
         
-        // Вычисляем скорость движения (только горизонтальную для анимации)
-        Vector3 fullVelocity = (transform.position - lastPosition) / Time.deltaTime;
-        currentVelocity = new Vector3(fullVelocity.x, 0, fullVelocity.z); // Только горизонтальная скорость
-        lastPosition = transform.position;
-        
-        // Обновляем данные бота
-        UpdateBotData();
-        
-        // Проверяем землю под ботом
         CheckGrounded();
-        
-        // Применяем гравитацию
         ApplyGravity();
         
-        // Обрабатываем прыжок
-        HandleJump();
-        
-        // Обрабатываем движение
-        HandleMovement();
-        
-        // Обновляем позицию в базе данных
-        VoxelBotDatabase.Instance.UpdateBotPosition(botId, transform.position);
-        
-        // Обновляем анимацию
-        UpdateAnimation();
-    }
-    
-    void OnDestroy()
-    {
-        // Удаляем бота из базы данных
-        VoxelBotDatabase.Instance.UnregisterBot(botId);
-    }
-    
-    /// <summary>
-    /// Инициализирует компоненты
-    /// </summary>
-    void InitializeComponents()
-    {
-        // Проверяем что конфиг назначен
-        if (config == null)
+        if (isJumping)
         {
-            Debug.LogError($"[VoxelBotController] VoxelBotConfig not assigned for {botId}! Please assign config in inspector.");
-            return;
+            HandleJump();
         }
         
-        // Создаем данные бота
-        botData = new VoxelBotData(botId, transform.position, config);
-        
-        // Создаем систему поиска пути
-        pathfinding = new VoxelPathfinding(config);
-        
-        // Удаляем CharacterController если есть
-        CharacterController oldController = GetComponent<CharacterController>();
-        if (oldController != null)
-        {
-            DestroyImmediate(oldController);
-        }
-        
-        // Удаляем Rigidbody если есть
-        Rigidbody oldRigidbody = GetComponent<Rigidbody>();
-        if (oldRigidbody != null)
-        {
-            DestroyImmediate(oldRigidbody);
-        }
-    }
-    
-    /// <summary>
-    /// Обновляет данные бота
-    /// </summary>
-    void UpdateBotData()
-    {
-        botData.UpdatePosition(transform.position);
-        botData.isGrounded = IsGrounded();
-        botData.isJumping = isJumping;
-        botData.currentHeight = GetCurrentHeight();
-        botData.velocity = currentVelocity;
-    }
-    
-    /// <summary>
-    /// Обрабатывает движение
-    /// </summary>
-    void HandleMovement()
-    {
-        // Блокируем движение если бот мертв или прыгает
-        if (botData == null || botData.isDead || isJumping) return;
-        
-        // Если управляется ИИ - используем команды от ИИ
         if (isAIControlled)
         {
             HandleAIMovement();
         }
-        else if (hasTarget && target != null)
-        {
-            // Старый режим - движение к цели
-            HandleTargetMovement();
-        }
-        else
-        {
-            // Останавливаемся если нет цели
-            StopMovement();
-        }
+        
+        UpdateAnimations();
     }
     
-    /// <summary>
-    /// Обрабатывает движение под управлением ИИ
-    /// </summary>
-    void HandleAIMovement()
+    private void InitializeBot()
     {
-        if (aiMoveDirection.sqrMagnitude > 0.1f)
+        if (config == null)
         {
-            // Двигаемся в направлении от ИИ
-            MoveInDirection(aiMoveDirection);
-            isMoving = true;
-        }
-        else
-        {
-            // Останавливаемся
-            StopMovement();
-        }
-        
-        // Обрабатываем прыжок от ИИ
-        if (aiShouldJump && !isJumping)
-        {
-            // Для ИИ прыжок происходит в направлении движения
-            Vector3 jumpTarget = transform.position + aiMoveDirection * config.jumpDistance;
-            StartJump(jumpTarget);
-        }
-    }
-    
-    /// <summary>
-    /// Обрабатывает движение к цели (старый режим)
-    /// </summary>
-    void HandleTargetMovement()
-    {
-        // Обновляем путь если нужно
-        if (Time.time - lastPathUpdateTime > config.pathUpdateInterval)
-        {
-            UpdatePath();
-            lastPathUpdateTime = Time.time;
-        }
-        
-        // Двигаемся по пути
-        MoveAlongPath();
-    }
-    
-    /// <summary>
-    /// Обновляет путь к цели
-    /// </summary>
-    void UpdatePath()
-    {
-        Vector3Int startPos = VoxelWorld.WorldToVoxel(transform.position);
-        Vector3Int targetPos = VoxelWorld.WorldToVoxel(target.position);
-        
-        // Проверяем видимость
-        if (pathfinding.HasLineOfSight(startPos, targetPos))
-        {
-            // Прямой путь
-            currentPath = new List<Vector3Int> { targetPos };
-        }
-        else
-        {
-            // Ищем путь через A*
-            currentPath = pathfinding.FindPath(startPos, targetPos);
-        }
-        
-        currentPathIndex = 0;
-        
-        if (currentPath.Count > 0)
-        {
-            Debug.Log($"[VoxelBotController] Found path with {currentPath.Count} points");
-        }
-        else
-        {
-            Debug.LogWarning($"[VoxelBotController] No path found to target");
-        }
-    }
-    
-    /// <summary>
-    /// Двигается по пути
-    /// </summary>
-    void MoveAlongPath()
-    {
-        if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
-        {
-            StopMovement();
+            Debug.LogError($"[VoxelBotController] VoxelBotConfig not assigned for {gameObject.name}! Please assign config in inspector.");
             return;
         }
         
-        Vector3Int targetVoxel = currentPath[currentPathIndex];
-        Vector3 targetWorldPos = VoxelWorld.VoxelToWorld(targetVoxel);
-        
-        // Проверяем достижение текущей точки
-        float distanceToTarget = Vector3.Distance(transform.position, targetWorldPos);
-        if (distanceToTarget < config.goalReachDistance)
+        if (animator == null)
         {
-            currentPathIndex++;
-            return;
+            animator = GetComponent<Animator>();
         }
         
-        // Проверяем нужно ли прыгать
-        if (ShouldJumpToTarget(targetVoxel))
-        {
-            StartJump(targetWorldPos);
-        }
-        else
-        {
-            // Обычное движение
-            MoveTowardsTarget(targetWorldPos);
-        }
+        // Initialize physics
+        velocity = Vector3.zero;
+        isGrounded = false;
+        isJumping = false;
+        isFalling = false;
+        
+        Debug.Log($"[VoxelBotController] Initialized bot: {gameObject.name}");
     }
     
-    /// <summary>
-    /// Двигается в заданном направлении (для ИИ)
-    /// </summary>
-    void MoveInDirection(Vector3 direction)
+    private void CheckGrounded()
     {
-        // Нормализуем направление
-        direction.y = 0; // Только горизонтальное движение
-        direction = direction.normalized;
-        
-        // ПОВОРОТ: Поворачиваем бота в направлении движения
-        if (direction.sqrMagnitude > 0.1f)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
-            float turnSpeed = 5f; // Скорость поворота
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
-        }
-        
-        // Проверяем препятствия перед движением
-        if (HasObstacleInDirection(direction))
-        {
-            // Не двигаемся если есть препятствие
-            StopMovement();
-            return;
-        }
-        
-        // Вычисляем целевую позицию
-        Vector3 targetPosition = transform.position + direction * config.moveSpeed * Time.deltaTime;
-        
-        // Проверяем можно ли двигаться в этом направлении
-        Vector3Int targetVoxel = VoxelWorld.WorldToVoxel(targetPosition);
-        Vector3Int currentVoxel = VoxelWorld.WorldToVoxel(transform.position);
-        
-        // Если нужно прыгать вверх
-        if (targetVoxel.y > currentVoxel.y && pathfinding.CanJumpTo(currentVoxel, targetVoxel))
-        {
-            Vector3 jumpTarget = VoxelWorld.VoxelToWorld(targetVoxel);
-            StartJump(jumpTarget);
-        }
-        else
-        {
-            // Обычное движение
-            MoveTowardsTarget(targetPosition);
-        }
-    }
-    
-    /// <summary>
-    /// Проверяет нужно ли прыгать к цели
-    /// </summary>
-    bool ShouldJumpToTarget(Vector3Int targetVoxel)
-    {
-        Vector3Int currentVoxel = VoxelWorld.WorldToVoxel(transform.position);
-        
-        // Проверяем что цель выше
-        if (targetVoxel.y > currentVoxel.y)
-        {
-            return pathfinding.CanJumpTo(currentVoxel, targetVoxel);
-        }
-        
-        return false;
-    }
-    
-    /// <summary>
-    /// Начинает прыжок
-    /// </summary>
-    void StartJump(Vector3 targetPosition)
-    {
-        if (isJumping) return;
-        
-        isJumping = true;
-        jumpStartTime = Time.time;
-        jumpStartPosition = transform.position;
-        jumpTargetPosition = targetPosition;
-        
-        Debug.Log($"[VoxelBotController] Starting jump to {targetPosition}");
-    }
-    
-    /// <summary>
-    /// Обрабатывает прыжок
-    /// </summary>
-    void HandleJump()
-    {
-        if (!isJumping) return;
-        
-        float jumpTime = Time.time - jumpStartTime;
-        float jumpDuration = Vector3.Distance(jumpStartPosition, jumpTargetPosition) / config.moveSpeed;
-        
-        if (jumpTime >= jumpDuration)
-        {
-            // Прыжок завершен - устанавливаем финальную позицию
-            Vector3 finalPosition = jumpTargetPosition;
-            
-            // ИСПРАВЛЕНИЕ: Находим безопасную высоту для приземления относительно исходной цели
-            Vector3Int targetVoxel = VoxelWorld.WorldToVoxel(jumpTargetPosition);
-            float safeHeight = FindSafeLandingHeight(targetVoxel, jumpTargetPosition);
-            
-            if (safeHeight > 0)
-            {
-                finalPosition.y = safeHeight;
-                transform.position = finalPosition;
-                isJumping = false;
-                Debug.Log($"[VoxelBotController] Jump completed safely to {finalPosition}");
-            }
-            else
-            {
-                // Не можем безопасно приземлиться - возвращаемся к стартовой позиции
-                transform.position = jumpStartPosition;
-                isJumping = false;
-                Debug.LogWarning($"[VoxelBotController] Jump failed - no safe landing spot, returning to {jumpStartPosition}");
-            }
-            return;
-        }
-        
-        // ИСПРАВЛЕНИЕ: Правильная интерполяция прыжка с учетом высоты цели
-        float t = jumpTime / jumpDuration;
-        
-        // Интерполируем горизонтальную позицию
-        Vector3 horizontalStart = new Vector3(jumpStartPosition.x, 0, jumpStartPosition.z);
-        Vector3 horizontalTarget = new Vector3(jumpTargetPosition.x, 0, jumpTargetPosition.z);
-        Vector3 horizontalPos = Vector3.Lerp(horizontalStart, horizontalTarget, t);
-        
-        // Интерполируем вертикальную позицию с дугой прыжка
-        float verticalStart = jumpStartPosition.y;
-        float verticalTarget = jumpTargetPosition.y;
-        float verticalLerp = Mathf.Lerp(verticalStart, verticalTarget, t);
-        
-        // Добавляем дугу прыжка
-        float jumpArc = Mathf.Sin(t * Mathf.PI) * config.jumpHeight;
-        
-        Vector3 currentPos = new Vector3(horizontalPos.x, verticalLerp + jumpArc, horizontalPos.z);
-        transform.position = currentPos;
-    }
-    
-    /// <summary>
-    /// Проверяет находится ли бот на земле
-    /// </summary>
-    void CheckGrounded()
-    {
-        if (Time.time - lastGroundCheckTime < groundCheckInterval) return;
-        lastGroundCheckTime = Time.time;
+        // Check ground every frame for better physics
         
         Vector3 botPosition = transform.position;
         Vector3Int botVoxel = VoxelWorld.WorldToVoxel(botPosition);
         
-        // Получаем размеры бота
-        float botDiameter = config.botDiameter;
-        int radiusBlocks = Mathf.CeilToInt(botDiameter / 2f);
-        
-        // Проверяем есть ли земля под ногами бота
+        // Проверяем есть ли земля под ногами с учетом размеров бота
         bool hasGround = false;
+        int radiusBlocks = Mathf.CeilToInt(config.botDiameterVoxels / 2f);
+        
+        // Проверяем все блоки под ногами бота
         for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
         {
             for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
             {
-                Vector3Int groundPos = new Vector3Int(botVoxel.x + dx, botVoxel.y - 1, botVoxel.z + dz);
-                if (VoxelWorld.IsVoxelSolid(groundPos))
+                Vector3Int groundVoxel = new Vector3Int(botVoxel.x + dx, botVoxel.y - 1, botVoxel.z + dz);
+                if (VoxelWorld.IsVoxelSolid(groundVoxel))
                 {
                     hasGround = true;
                     break;
@@ -445,217 +104,169 @@ public class VoxelBotController : MonoBehaviour
             if (hasGround) break;
         }
         
-        isGrounded = hasGround;
+        // Бот на земле если есть земля под ногами
+        // Но не перезаписываем isGrounded если он был установлен в ApplyGravity()
+        if (!isGrounded || hasGround)
+        {
+            isGrounded = hasGround;
+        }
         
-        // Если на земле - сбрасываем вертикальную скорость
+        // Debug log when ground status changes
+        if (isGrounded != wasGrounded)
+        {
+            Debug.Log($"[VoxelBotController] Ground status changed: {wasGrounded} -> {isGrounded}, hasGround={hasGround}");
+            
+            // If we just lost ground, ensure we start falling
+            if (!isGrounded && wasGrounded)
+            {
+                velocity.y = 0; // Start falling from rest
+                Debug.Log($"[VoxelBotController] Started falling, velocity.y={velocity.y}");
+            }
+            
+            wasGrounded = isGrounded;
+        }
+        
+        // If on ground, reset vertical velocity
         if (isGrounded && velocity.y < 0)
         {
             velocity.y = 0;
+            isFalling = false;
         }
     }
     
-    /// <summary>
-    /// Применяет гравитацию к боту
-    /// </summary>
-    void ApplyGravity()
+    private void ApplyGravity()
     {
-        if (isJumping) return; // Во время прыжка гравитация не применяется
+        if (isJumping) return; // No gravity during jump
         
         if (!isGrounded)
         {
-            // Применяем гравитацию
+            // Apply gravity (gravity is negative, so velocity.y becomes more negative)
+            float oldVelocityY = velocity.y;
             velocity.y += config.gravity * Time.deltaTime;
             
-            // Ограничиваем скорость падения
-            velocity.y = Mathf.Max(velocity.y, -config.fallSpeed);
+            // Limit fall speed
+            velocity.y = Mathf.Max(velocity.y, -config.maxFallSpeed);
             
-            // Применяем вертикальное движение
+            // Apply vertical movement (velocity.y is negative when falling)
             Vector3 newPosition = transform.position + Vector3.up * velocity.y * Time.deltaTime;
+            
+            // Check for ground collision when moving down
+            if (velocity.y < 0) // Moving down
+            {
+                Vector3Int newVoxel = VoxelWorld.WorldToVoxel(newPosition);
+                Vector3Int groundVoxel = new Vector3Int(newVoxel.x, newVoxel.y - 1, newVoxel.z);
+                
+                // Check if we would hit ground
+                if (VoxelWorld.IsVoxelSolid(groundVoxel))
+                {
+                    // Stop at ground level
+                    Vector3 groundWorldPos = VoxelWorld.VoxelToWorld(groundVoxel);
+                    newPosition.y = groundWorldPos.y + 1f; // Position above ground
+                    velocity.y = 0; // Stop falling
+                    isGrounded = true;
+                    Debug.Log($"[VoxelBotController] Hit ground at {newPosition}, stopped falling");
+                }
+            }
+            
             transform.position = newPosition;
+            
+            isFalling = true;
+            
+            // Debug log
+            if (Time.frameCount % 60 == 0) // Every second
+            {
+                Debug.Log($"[VoxelBotController] Falling: velocity.y={velocity.y:F2} (was {oldVelocityY:F2}), position={transform.position}");
+            }
         }
         else
         {
-            // На земле - сбрасываем вертикальную скорость
+            // On ground, reset vertical velocity
             velocity.y = 0;
+            isFalling = false;
         }
     }
     
-    /// <summary>
-    /// Двигается к цели
-    /// </summary>
-    void MoveTowardsTarget(Vector3 targetPosition)
+    private void HandleAIMovement()
     {
-        // ИСПРАВЛЕНИЕ: Плавное движение без телепортации
-        Vector3 direction = (targetPosition - transform.position).normalized;
-        direction.y = 0; // Только горизонтальное движение
+        if (aiMoveDirection.sqrMagnitude > 0.1f)
+        {
+            MoveInDirection(aiMoveDirection);
+        }
         
-        // Применяем горизонтальное движение
+        if (aiShouldJump)
+        {
+            StartJump(aiMoveDirection);
+            aiShouldJump = false;
+        }
+    }
+    
+    private void MoveInDirection(Vector3 direction)
+    {
+        if (isJumping) return; // Can't move during jump
+        
+        direction.y = 0; // Only horizontal movement
+        direction = direction.normalized;
+        
+        // Check for obstacles in movement direction
+        if (HasObstacleInDirection(direction))
+        {
+            return; // Can't move
+        }
+        
+        // Apply horizontal movement
         Vector3 horizontalMovement = direction * config.moveSpeed * Time.deltaTime;
         Vector3 newPosition = transform.position + horizontalMovement;
         
-        // ИСПРАВЛЕНИЕ: Проверяем поддерживается ли бот, а не принудительно ставим на поверхность
-        if (isGrounded)
+        // Don't force height adjustment - let gravity handle vertical movement
+        // Only check if we're moving to a valid position
+        Vector3Int voxelPos = VoxelWorld.WorldToVoxel(newPosition);
+        
+        // Check if there's enough space at the target position
+        bool hasSpace = true;
+        for (int i = 0; i <= config.botHeightVoxels; i++)
         {
-            // Если бот на земле - проверяем не упадет ли он
-            Vector3Int voxelPos = VoxelWorld.WorldToVoxel(newPosition);
-            float surfaceHeight = GetSurfaceHeight(voxelPos);
-            
-            // Если поверхность ниже текущей позиции - бот может упасть
-            if (surfaceHeight < transform.position.y - 0.5f)
+            Vector3Int checkVoxel = new Vector3Int(voxelPos.x, voxelPos.y + i, voxelPos.z);
+            if (VoxelWorld.IsVoxelSolid(checkVoxel))
             {
-                // Бот упадет - не двигаемся горизонтально, пусть падает по гравитации
-                return;
-            }
-            
-            // Если поверхность выше - корректируем высоту плавно
-            if (surfaceHeight > transform.position.y - 0.1f)
-            {
-                float targetHeight = surfaceHeight + config.botHeight * 0.5f;
-                newPosition.y = Mathf.Lerp(transform.position.y, targetHeight, Time.deltaTime * 5f);
+                hasSpace = false;
+                break;
             }
         }
         
-        // Проверяем столкновение с потолком
-        if (IsHittingCeiling(newPosition))
+        // Only move if there's space
+        if (hasSpace)
         {
-            // Если потолок слишком низко, останавливаемся
-            return;
+            transform.position = newPosition;
         }
         
-        transform.position = newPosition;
+        // Rotate towards movement direction
+        if (direction.sqrMagnitude > 0.1f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, config.turnSpeed * Time.deltaTime);
+        }
     }
     
-    /// <summary>
-    /// Получает высоту поверхности под указанным вокселем
-    /// </summary>
-    float GetSurfaceHeight(Vector3Int voxelPos)
+    private bool HasObstacleInDirection(Vector3 direction)
     {
-        // Ищем самый верхний твердый блок под ботом
-        for (int y = voxelPos.y; y >= 0; y--)
-        {
-            Vector3Int checkPos = new Vector3Int(voxelPos.x, y, voxelPos.z);
-            if (VoxelWorld.IsVoxelSolid(checkPos))
-            {
-                // Нашли поверхность, возвращаем мировую координату
-                return VoxelWorld.VoxelToWorld(checkPos).y;
-            }
-        }
-        
-        // Если не нашли поверхность, возвращаем 0
-        return 0f;
-    }
-    
-    /// <summary>
-    /// Находит безопасную высоту для приземления относительно исходной цели
-    /// </summary>
-    float FindSafeLandingHeight(Vector3Int targetVoxel, Vector3 originalTarget)
-    {
-        // Получаем размеры бота
-        float botDiameter = config.botDiameter;
-        float botHeight = config.botHeight;
-        
-        // Вычисляем количество блоков для проверки
-        int radiusBlocks = Mathf.CeilToInt(botDiameter / 2f);
-        int heightBlocks = Mathf.CeilToInt(botHeight);
-        
-        // ИСПРАВЛЕНИЕ: Начинаем поиск от исходной высоты цели
-        int originalY = Mathf.RoundToInt(originalTarget.y);
-        int searchRange = 5; // Ищем в диапазоне ±5 блоков от цели
-        
-        // Ищем безопасную высоту сначала близко к цели, потом дальше
-        for (int offset = 0; offset <= searchRange; offset++)
-        {
-            // Проверяем сначала вверх, потом вниз от исходной цели
-            int[] yChecks = { originalY + offset, originalY - offset };
-            
-            foreach (int y in yChecks)
-            {
-                if (y < 0 || y >= VoxelWorld.Instance.GetWorldHeight()) continue;
-                
-                // Проверяем что в этой позиции нет блоков (можем стоять)
-                bool canStand = true;
-                for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
-                {
-                    for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
-                    {
-                        for (int dy = 0; dy <= heightBlocks; dy++)
-                        {
-                            Vector3Int checkPos = new Vector3Int(targetVoxel.x + dx, y + dy, targetVoxel.z + dz);
-                            if (VoxelWorld.IsVoxelSolid(checkPos))
-                            {
-                                canStand = false;
-                                break;
-                            }
-                        }
-                        if (!canStand) break;
-                    }
-                    if (!canStand) break;
-                }
-                
-                if (!canStand) continue;
-                
-                // Проверяем что есть земля под ногами
-                bool hasGround = false;
-                for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
-                {
-                    for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
-                    {
-                        Vector3Int groundPos = new Vector3Int(targetVoxel.x + dx, y - 1, targetVoxel.z + dz);
-                        if (VoxelWorld.IsVoxelSolid(groundPos))
-                        {
-                            hasGround = true;
-                            break;
-                        }
-                    }
-                    if (hasGround) break;
-                }
-                
-                if (hasGround)
-                {
-                    // ИСПРАВЛЕНИЕ: Возвращаем высоту центра бота (ноги на поверхности)
-                    return y + 0.5f;
-                }
-            }
-        }
-        
-        return -1f; // Не нашли безопасную позицию
-    }
-    
-    /// <summary>
-    /// Проверяет есть ли препятствие в направлении движения
-    /// </summary>
-    bool HasObstacleInDirection(Vector3 direction)
-    {
-        if (direction.sqrMagnitude < 0.01f) return false;
-        
         Vector3 currentPos = transform.position;
-        Vector3 checkDirection = direction.normalized;
+        Vector3 targetPos = currentPos + direction.normalized * 1.5f;
         
-        // Получаем размеры бота из конфига
-        float botDiameter = config.botDiameter;
-        float botHeight = config.botHeight;
-        
-        // Вычисляем количество блоков для проверки
-        int radiusBlocks = Mathf.CeilToInt(botDiameter / 2f);
-        int heightBlocks = Mathf.CeilToInt(botHeight);
-        
-        // Проверяем препятствия на разных высотах и по ширине бота
-        for (int dy = 0; dy <= heightBlocks; dy++)
+        // Check multiple points along the movement path
+        int steps = 5; // Check 5 points along the path
+        for (int step = 1; step <= steps; step++)
         {
-            for (int dx = -radiusBlocks; dx <= radiusBlocks; dx++)
+            float t = (float)step / steps;
+            Vector3 checkPos = Vector3.Lerp(currentPos, targetPos, t);
+            Vector3Int checkVoxel = VoxelWorld.WorldToVoxel(checkPos);
+            
+            // Check if there's a solid block in the way at this point
+            for (int i = 0; i <= config.botHeightVoxels; i++)
             {
-                for (int dz = -radiusBlocks; dz <= radiusBlocks; dz++)
+                Vector3Int obstacleVoxel = new Vector3Int(checkVoxel.x, checkVoxel.y + i, checkVoxel.z);
+                if (VoxelWorld.IsVoxelSolid(obstacleVoxel))
                 {
-                    // Вычисляем позицию для проверки
-                    Vector3 offset = new Vector3(dx, dy, dz);
-                    Vector3 checkPos = currentPos + offset + checkDirection * 1.2f; // 1.2 блока вперед
-                    
-                    // Проверяем есть ли препятствие в этой позиции
-                    Vector3Int checkVoxel = VoxelWorld.WorldToVoxel(checkPos);
-                    if (VoxelWorld.IsVoxelSolid(checkVoxel))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }
@@ -663,87 +274,265 @@ public class VoxelBotController : MonoBehaviour
         return false;
     }
     
-    /// <summary>
-    /// Останавливает движение
-    /// </summary>
-    void StopMovement()
+    private float GetSurfaceHeight(Vector3Int voxelPos)
     {
-        isMoving = false;
-        currentPath.Clear();
-        currentPathIndex = 0;
+        // Find the highest solid block at this X,Z position
+        for (int y = VoxelWorld.Instance.GetWorldHeight() - 1; y >= 0; y--)
+        {
+            Vector3Int checkVoxel = new Vector3Int(voxelPos.x, y, voxelPos.z);
+            if (VoxelWorld.IsVoxelSolid(checkVoxel))
+            {
+                return y + 1; // Return height above the solid block
+            }
+        }
+        
+        return 0; // No ground found
     }
     
-    /// <summary>
-    /// Обновляет анимацию бота
-    /// </summary>
-    void UpdateAnimation()
+    public void StartJump(Vector3 direction)
+    {
+        if (isJumping || !isGrounded) return;
+        
+        direction.y = 0;
+        direction = direction.normalized;
+        
+        // Calculate jump target
+        Vector3Int currentVoxel = VoxelWorld.WorldToVoxel(transform.position);
+        Vector3Int jumpTargetVoxel = new Vector3Int(
+            currentVoxel.x + Mathf.RoundToInt(direction.x * config.jumpDistanceVoxels),
+            currentVoxel.y,
+            currentVoxel.z + Mathf.RoundToInt(direction.z * config.jumpDistanceVoxels)
+        );
+        
+        Vector3 jumpTarget = VoxelWorld.VoxelToWorld(jumpTargetVoxel);
+        
+        // Check if jump target is within world bounds
+        if (!IsPositionWithinWorldBounds(jumpTarget))
+        {
+            Debug.LogWarning($"[VoxelBotController] Jump target outside world bounds: {jumpTarget}");
+            return; // Can't jump outside world
+        }
+        
+        // Check if jump target is valid
+        if (!IsValidJumpTarget(jumpTargetVoxel))
+        {
+            return; // Can't jump there
+        }
+        
+        // Calculate jump trajectory
+        jumpTrajectory = CalculateJumpTrajectory(transform.position, jumpTarget);
+        
+        if (jumpTrajectory == null || jumpTrajectory.Count == 0)
+        {
+            return; // Invalid trajectory
+        }
+        
+        // Start jump
+        jumpStartPosition = transform.position;
+        jumpTargetPosition = jumpTarget;
+        jumpStartTime = Time.time;
+        currentTrajectoryIndex = 0;
+        isJumping = true;
+        
+        Debug.Log($"[VoxelBotController] Started jump from {jumpStartPosition} to {jumpTargetPosition}");
+    }
+    
+    private bool IsValidJumpTarget(Vector3Int targetVoxel)
+    {
+        // Check if target voxel is within world bounds
+        if (targetVoxel.x < 0 || targetVoxel.x >= VoxelWorld.Instance.chunksX * 16 ||
+            targetVoxel.z < 0 || targetVoxel.z >= VoxelWorld.Instance.chunksZ * 16 ||
+            targetVoxel.y < 0 || targetVoxel.y >= VoxelWorld.Instance.GetWorldHeight())
+        {
+            return false;
+        }
+        
+        // Check if target voxel is empty
+        if (VoxelWorld.IsVoxelSolid(targetVoxel)) return false;
+        
+        // Check if there's ground below target (support for stairs)
+        bool hasGround = false;
+        for (int dy = 1; dy <= 2; dy++) // Check 2 blocks down for stairs
+        {
+            Vector3Int groundVoxel = new Vector3Int(targetVoxel.x, targetVoxel.y - dy, targetVoxel.z);
+            if (VoxelWorld.IsVoxelSolid(groundVoxel))
+            {
+                hasGround = true;
+                break;
+            }
+        }
+        
+        if (!hasGround) return false;
+        
+        // Check if there's enough space above for bot height
+        for (int i = 1; i <= config.botHeightVoxels; i++)
+        {
+            Vector3Int checkVoxel = new Vector3Int(targetVoxel.x, targetVoxel.y + i, targetVoxel.z);
+            if (VoxelWorld.IsVoxelSolid(checkVoxel)) return false;
+        }
+        
+        return true;
+    }
+    
+    private List<Vector3> CalculateJumpTrajectory(Vector3 start, Vector3 target)
+    {
+        List<Vector3> trajectory = new List<Vector3>();
+        
+        float totalDistance = Vector3.Distance(start, target);
+        float jumpDuration = totalDistance / config.moveSpeed;
+        
+        for (int i = 0; i <= config.jumpTrajectoryPoints; i++)
+        {
+            float t = (float)i / config.jumpTrajectoryPoints;
+            
+            // Interpolate horizontal position
+            Vector3 horizontalPos = Vector3.Lerp(start, target, t);
+            
+            // Calculate vertical position with jump arc
+            float jumpArc = Mathf.Sin(t * Mathf.PI) * config.jumpHeight;
+            // Use target Y as base height for landing
+            float baseHeight = Mathf.Lerp(start.y, target.y, t);
+            Vector3 trajectoryPoint = new Vector3(horizontalPos.x, baseHeight + jumpArc, horizontalPos.z);
+            
+            // Check if trajectory point is within world bounds
+            if (IsPositionWithinWorldBounds(trajectoryPoint))
+            {
+                trajectory.Add(trajectoryPoint);
+            }
+            else
+            {
+                // If any point is outside bounds, return empty trajectory
+                Debug.LogWarning($"[VoxelBotController] Trajectory point outside world bounds: {trajectoryPoint}");
+                return new List<Vector3>();
+            }
+        }
+        
+        return trajectory;
+    }
+    
+    private void HandleJump()
+    {
+        if (!isJumping) return;
+        
+        float jumpTime = Time.time - jumpStartTime;
+        float jumpDuration = Vector3.Distance(jumpStartPosition, jumpTargetPosition) / config.moveSpeed;
+        
+        if (jumpTime >= jumpDuration)
+        {
+            // Jump completed
+            Vector3 finalPosition = jumpTargetPosition;
+            
+            // Проверяем границы мира перед установкой позиции
+            if (IsPositionWithinWorldBounds(finalPosition))
+            {
+                transform.position = finalPosition;
+                isJumping = false;
+                Debug.Log($"[VoxelBotController] Jump completed to {finalPosition}");
+            }
+            else
+            {
+                // Позиция вне границ мира - прерываем прыжок
+                Debug.LogWarning($"[VoxelBotController] Jump target outside world bounds: {finalPosition}");
+                isJumping = false;
+            }
+            return;
+        }
+        
+        // Follow trajectory
+        float t = jumpTime / jumpDuration;
+        
+        // Interpolate horizontal position
+        Vector3 horizontalStart = new Vector3(jumpStartPosition.x, 0, jumpStartPosition.z);
+        Vector3 horizontalTarget = new Vector3(jumpTargetPosition.x, 0, jumpTargetPosition.z);
+        Vector3 horizontalPos = Vector3.Lerp(horizontalStart, horizontalTarget, t);
+        
+        // Calculate vertical position with jump arc
+        float jumpArc = Mathf.Sin(t * Mathf.PI) * config.jumpHeight;
+        Vector3 currentPos = new Vector3(horizontalPos.x, jumpStartPosition.y + jumpArc, horizontalPos.z);
+        
+        // Проверяем границы мира
+        if (!IsPositionWithinWorldBounds(currentPos))
+        {
+            Debug.LogWarning($"[VoxelBotController] Jump position outside world bounds: {currentPos}");
+            isJumping = false;
+            return;
+        }
+        
+        // Check for obstacles during jump
+        Vector3Int currentVoxel = VoxelWorld.WorldToVoxel(currentPos);
+        if (VoxelWorld.IsVoxelSolid(currentVoxel))
+        {
+            // Hit obstacle, stop horizontal movement but continue vertical
+            currentPos.x = transform.position.x;
+            currentPos.z = transform.position.z;
+        }
+        
+        transform.position = currentPos;
+    }
+    
+    private bool IsPositionWithinWorldBounds(Vector3 position)
+    {
+        if (VoxelWorld.Instance == null) return true;
+        
+        // Проверяем границы мира
+        int worldHeight = VoxelWorld.Instance.GetWorldHeight();
+        int worldWidth = VoxelWorld.Instance.chunksX * 16; // 16 блоков в чанке
+        int worldDepth = VoxelWorld.Instance.chunksZ * 16;
+        
+        // Проверяем Y координату (высота)
+        if (position.y < 0 || position.y >= worldHeight)
+        {
+            return false;
+        }
+        
+        // Проверяем X и Z координаты (границы мира)
+        if (position.x < 0 || position.x >= worldWidth || 
+            position.z < 0 || position.z >= worldDepth)
+        {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    private void UpdateAnimations()
     {
         if (animator == null) return;
         
-        // Вычисляем скорость движения (только горизонтальную)
-        float speed = currentVelocity.magnitude;
-        bool isGrounded = IsGrounded();
-        
-        // Нормализуем скорость как у игрока (0 = стоит, 1 = максимальная скорость)
+        // Set animation parameters (using same names as EnemyBot.cs)
+        float speed = velocity.magnitude;
         float normalizedSpeed = Mathf.Clamp01(speed / config.moveSpeed);
         
-        // Устанавливаем параметры аниматора
         animator.SetFloat("Speed", normalizedSpeed);
         animator.SetBool("IsGrounded", isGrounded);
-    }
-    
-    /// <summary>
-    /// Проверяет касание земли
-    /// </summary>
-    bool IsGrounded()
-    {
-        // Ноги бота находятся на высоте: transform.position.y - config.botHeight * 0.5f
-        float footHeight = transform.position.y - config.botHeight * 0.5f;
-        Vector3 footPosition = new Vector3(transform.position.x, footHeight, transform.position.z);
         
-        // Проверяем воксель под ногами
-        Vector3Int footVoxel = VoxelWorld.WorldToVoxel(footPosition);
-        bool isGrounded = VoxelWorld.IsVoxelSolid(footVoxel);
-        
-        return isGrounded;
-    }
-    
-    /// <summary>
-    /// Проверяет столкновение с потолком
-    /// </summary>
-    bool IsHittingCeiling(Vector3 position)
-    {
-        Vector3Int aboveVoxel = VoxelWorld.WorldToVoxel(position + Vector3.up * config.botHeight);
-        return VoxelWorld.IsVoxelSolid(aboveVoxel);
-    }
-    
-    /// <summary>
-    /// Получает текущую высоту над вокселем
-    /// </summary>
-    float GetCurrentHeight()
-    {
-        Vector3Int voxelPos = VoxelWorld.WorldToVoxel(transform.position);
-        Vector3 voxelWorldPos = VoxelWorld.VoxelToWorld(voxelPos);
-        return transform.position.y - voxelWorldPos.y;
-    }
-    
-    /// <summary>
-    /// Устанавливает цель
-    /// </summary>
-    public void SetTarget(Transform newTarget)
-    {
-        target = newTarget;
-        hasTarget = newTarget != null;
-        
-        if (hasTarget)
+        // Only set jumping parameter if it exists in the animator
+        if (HasAnimatorParameter("IsJumping"))
         {
-            Debug.Log($"[VoxelBotController] Target set: {newTarget.name}");
+            animator.SetBool("IsJumping", isJumping);
+        }
+        
+        if (HasAnimatorParameter("IsFalling"))
+        {
+            animator.SetBool("IsFalling", isFalling);
         }
     }
     
-    /// <summary>
-    /// Команда движения от ИИ
-    /// </summary>
+    private bool HasAnimatorParameter(string parameterName)
+    {
+        if (animator == null) return false;
+        
+        foreach (AnimatorControllerParameter param in animator.parameters)
+        {
+            if (param.name == parameterName)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // AI Control Interface
     public void MoveToTarget(Vector3 moveDirection, bool shouldJump)
     {
         aiMoveDirection = moveDirection;
@@ -751,9 +540,6 @@ public class VoxelBotController : MonoBehaviour
         isAIControlled = true;
     }
     
-    /// <summary>
-    /// Отключает управление ИИ (возвращает к старому режиму)
-    /// </summary>
     public void DisableAIControl()
     {
         isAIControlled = false;
@@ -761,28 +547,54 @@ public class VoxelBotController : MonoBehaviour
         aiShouldJump = false;
     }
     
-    /// <summary>
-    /// Включает управление ИИ
-    /// </summary>
     public void EnableAIControl()
     {
         isAIControlled = true;
     }
     
-    /// <summary>
-    /// Получает данные бота
-    /// </summary>
-    public VoxelBotData GetBotData()
+    // Getters for AI
+    public bool IsGrounded => isGrounded;
+    public bool IsJumping => isJumping;
+    public bool IsFalling => isFalling;
+    public Vector3 Velocity => velocity;
+    
+    // Legacy interface methods for compatibility
+    public void SetTarget(Transform target)
     {
-        return botData;
+        // This method is kept for compatibility but doesn't do anything
+        // Target is now managed by VoxelBotAI
     }
     
-    /// <summary>
-    /// Проверяет попадание в бота
-    /// </summary>
-    public bool CheckHit(Vector3 hitPoint, float radius)
+    public VoxelBotData GetBotData()
     {
-        return botData.bounds.Contains(hitPoint) || 
-               Vector3.Distance(hitPoint, botData.bounds.ClosestPoint(hitPoint)) <= radius;
+        return new VoxelBotData(
+            gameObject.name,
+            transform.position,
+            config
+        );
+    }
+    
+    public bool CheckHit(Vector3 hitPoint, float damage)
+    {
+        // Simple hit check - if hit point is within bot bounds
+        Vector3 botPos = transform.position;
+        float distance = Vector3.Distance(hitPoint, botPos);
+        float botRadius = config.botDiameterVoxels * 0.5f;
+        
+        return distance <= botRadius;
+    }
+    
+    // Debug visualization
+    void OnDrawGizmos()
+    {
+        // Only show jump trajectory when jumping
+        if (isJumping && jumpTrajectory != null && jumpTrajectory.Count > 0)
+        {
+            Gizmos.color = Color.yellow;
+            for (int i = 0; i < jumpTrajectory.Count - 1; i++)
+            {
+                Gizmos.DrawLine(jumpTrajectory[i], jumpTrajectory[i + 1]);
+            }
+        }
     }
 }

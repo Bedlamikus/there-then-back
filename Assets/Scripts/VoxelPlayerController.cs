@@ -171,7 +171,7 @@ public class VoxelPlayerController : MonoBehaviour
             // Применяем гравитацию когда не двигаемся
             if (!isGrounded)
             {
-                Vector3 newPosition = transform.position + Vector3.down * config.fallSpeed * Time.deltaTime;
+                Vector3 newPosition = transform.position + Vector3.down * config.maxFallSpeed * Time.deltaTime;
                 transform.position = newPosition;
             }
         }
@@ -228,7 +228,7 @@ public class VoxelPlayerController : MonoBehaviour
         }
         
         Vector3 jumpDirection = GetCameraRelativeDirection(moveInput);
-        jumpTargetPosition = transform.position + jumpDirection * config.jumpDistance;
+        jumpTargetPosition = transform.position + jumpDirection * config.jumpDistanceVoxels;
         
         Debug.Log("[VoxelPlayerController] Starting jump");
     }
@@ -287,7 +287,7 @@ public class VoxelPlayerController : MonoBehaviour
     /// </summary>
     bool IsGrounded()
     {
-        Vector3Int belowVoxel = VoxelWorld.WorldToVoxel(transform.position + Vector3.down * config.groundCheckHeight);
+        Vector3Int belowVoxel = VoxelWorld.WorldToVoxel(transform.position + Vector3.down * 1f);
         return VoxelWorld.IsVoxelSolid(belowVoxel);
     }
     
@@ -296,7 +296,7 @@ public class VoxelPlayerController : MonoBehaviour
     /// </summary>
     bool IsHittingCeiling(Vector3 position)
     {
-        Vector3Int aboveVoxel = VoxelWorld.WorldToVoxel(position + Vector3.up * config.botHeight);
+        Vector3Int aboveVoxel = VoxelWorld.WorldToVoxel(position + Vector3.up * config.botHeightVoxels);
         return VoxelWorld.IsVoxelSolid(aboveVoxel);
     }
     

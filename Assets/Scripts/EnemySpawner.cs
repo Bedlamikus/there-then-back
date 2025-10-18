@@ -439,13 +439,13 @@ public class EnemySpawner : MonoBehaviour
         // Новая логика: ищем снизу ВВЕРХ пока не найдем безопасное место
         for (int y = minSpawnHeight; y <= maxSpawnHeight; y++)
         {
-            // Проверяем что есть твердый блок под ногами и свободно сверху (2 блока)
-            if (voxelWorld.HasBlockAt(blockX, y, blockZ) &&
-                !voxelWorld.HasBlockAt(blockX, y + 1, blockZ) &&
-                !voxelWorld.HasBlockAt(blockX, y + 2, blockZ) &&
-                !voxelWorld.HasBlockAt(blockX, y + 3, blockZ))
+            // Проверяем что есть твердый блок ПОД ногами и свободно сверху (2 блока)
+            if (voxelWorld.HasBlockAt(blockX, y - 1, blockZ) &&  // Земля под ногами
+                !voxelWorld.HasBlockAt(blockX, y, blockZ) &&      // Свободно на уровне ног
+                !voxelWorld.HasBlockAt(blockX, y + 1, blockZ) &&  // Свободно на уровне головы
+                !voxelWorld.HasBlockAt(blockX, y + 2, blockZ))    // Свободно выше головы
             {
-                Vector3 safePos = new Vector3(position.x, y + 1.5f, position.z);
+                Vector3 safePos = new Vector3(position.x, y + 0.5f, position.z);
                 
                 // Проверяем дистанцию до игрока
                 if (targetPlayer != null)
@@ -453,11 +453,9 @@ public class EnemySpawner : MonoBehaviour
                     float distanceToPlayer = Vector3.Distance(safePos, targetPlayer.position);
                     if (distanceToPlayer < minDistanceFromPlayer)
                     {
-                        
                         continue; // Слишком близко к игроку, ищем выше
                     }
                 }
-                
                 
                 return safePos;
             }

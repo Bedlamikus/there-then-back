@@ -1505,7 +1505,7 @@ MonoBehaviour:
   enemyPrefab: {fileID: 5506370006722563975, guid: 90a172b178a92fd4ba3a7af273a575a7, type: 3}
   spawnMode: 1
   enemiesPerSpawn: 1
-  maxEnemiesAlive: 10
+  maxEnemiesAlive: 1
   areaMode: 2
   spawnRadius: 25
   spawnPoints: []

@@ -1,49 +1,53 @@
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "VoxelBotConfig", menuName = "Voxel Bot/Config")]
+[CreateAssetMenu(fileName = "VoxelBotConfig", menuName = "Bot/Voxel Bot Config")]
 public class VoxelBotConfig : ScriptableObject
 {
     [Header("Bot Dimensions")]
-    [Tooltip("Диаметр бота в единицах")]
-    public float botDiameter = 0.7f;
+    [Tooltip("Bot diameter in voxels")]
+    public int botDiameterVoxels = 1;
     
-    [Tooltip("Высота бота в единицах")]
-    public float botHeight = 1.8f;
+    [Tooltip("Bot height in voxels")]
+    public int botHeightVoxels = 2;
     
-    [Header("Movement Settings")]
-    [Tooltip("Скорость движения бота (единиц в секунду)")]
-    public float moveSpeed = 3f;
+    [Header("Movement")]
+    [Tooltip("Movement speed in units per second")]
+    public float moveSpeed = 5f;
     
-    [Tooltip("Высота прыжка в единицах")]
-    public float jumpHeight = 1.5f;
+    [Tooltip("Turn speed in degrees per second")]
+    public float turnSpeed = 180f;
     
-    [Tooltip("Длина прыжка в единицах")]
-    public float jumpDistance = 2.5f;
+    [Header("Jumping")]
+    [Tooltip("Jump height in units")]
+    public float jumpHeight = 2f;
     
-    [Header("Pathfinding Settings")]
-    [Tooltip("Максимальная дистанция поиска пути")]
-    public float maxPathfindingDistance = 50f;
+    [Tooltip("Jump distance in voxels")]
+    public int jumpDistanceVoxels = 2;
     
-    [Tooltip("Точность достижения цели (в единицах)")]
-    public float goalReachDistance = 0.5f;
+    [Tooltip("Jump trajectory points count")]
+    public int jumpTrajectoryPoints = 10;
     
-    [Tooltip("Интервал обновления пути (секунды)")]
-    public float pathUpdateInterval = 0.5f;
+    [Header("Physics")]
+    [Tooltip("Gravity force")]
+    public float gravity = -9.81f;
     
-    [Header("Detection Settings")]
-    [Tooltip("Радиус обнаружения игрока")]
-    public float detectionRadius = 15f;
+    [Tooltip("Maximum fall speed")]
+    public float maxFallSpeed = 20f;
     
-    [Tooltip("Максимальная дистанция атаки")]
-    public float attackRange = 10f;
+    [Header("Patrol")]
+    [Tooltip("Patrol radius in voxels")]
+    public int patrolRadiusVoxels = 10;
     
-    [Header("Physics Simulation")]
-    [Tooltip("Гравитация для бота")]
-    public float gravity = 9.81f;
+    [Tooltip("Maximum pathfinding distance in voxels")]
+    public int maxPathfindingDistanceVoxels = 20;
     
-    [Tooltip("Скорость падения")]
-    public float fallSpeed = 5f;
+    [Header("AI")]
+    [Tooltip("Detection range in voxels")]
+    public int detectionRangeVoxels = 15;
     
-    [Tooltip("Высота проверки земли под ботом")]
-    public float groundCheckHeight = 0.1f;
+    [Tooltip("Attack range in voxels")]
+    public int attackRangeVoxels = 3;
+    
+    [Tooltip("Patrol point search attempts")]
+    public int patrolSearchAttempts = 10;
 }

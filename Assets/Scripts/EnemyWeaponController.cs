@@ -101,7 +101,7 @@ public class EnemyWeaponController : MonoBehaviour
         AimAtTarget();
         
         // Стреляем если в состоянии Attack
-        if (bot.GetCurrentState() == AIState.Attack)
+        if (bot.GetCurrentState() == VoxelBotState.Attack)
         {
             TryShoot();
         }

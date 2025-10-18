@@ -247,7 +247,7 @@ public class EnemyBot : MonoBehaviour, ISpawnable
         float distanceToPlayer = Vector3.Distance(transform.position, target.position);
         
         // Проверяем обнаружение игрока
-        if (distanceToPlayer <= voxelController.config.detectionRadius)
+        if (distanceToPlayer <= voxelController.config.detectionRangeVoxels)
         {
             if (!hasDetectedPlayer)
             {
@@ -259,7 +259,7 @@ public class EnemyBot : MonoBehaviour, ISpawnable
             voxelController.SetTarget(target);
             
             // Проверяем возможность атаки
-            if (distanceToPlayer <= voxelController.config.attackRange)
+            if (distanceToPlayer <= voxelController.config.attackRangeVoxels)
             {
                 TryAttack();
             }
@@ -568,23 +568,29 @@ public class EnemyBot : MonoBehaviour, ISpawnable
     /// <summary>
     /// Получает текущее состояние ИИ бота
     /// </summary>
-    public AIState GetCurrentState()
+    public VoxelBotState GetCurrentState()
     {
+        if (voxelBotAI != null)
+        {
+            return voxelBotAI.CurrentState;
+        }
+        
+        // Fallback к старой логике
         if (hasDetectedPlayer)
         {
             float distanceToPlayer = Vector3.Distance(transform.position, target.position);
-            if (distanceToPlayer <= voxelController.config.attackRange)
+            if (distanceToPlayer <= voxelController.config.attackRangeVoxels)
             {
-                return AIState.Attack;
+                return VoxelBotState.Attack;
             }
             else
             {
-                return AIState.Chase;
+                return VoxelBotState.Chase;
             }
         }
         else
         {
-            return AIState.Patrol;
+            return VoxelBotState.Patrol;
         }
     }
     

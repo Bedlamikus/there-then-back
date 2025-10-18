@@ -1028,8 +1028,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4932379494568053252}
-  - component: {fileID: 8045138635086140658}
-  - component: {fileID: 8039255882697157949}
   - component: {fileID: 8452318880774885986}
   - component: {fileID: 3008468505300814615}
   - component: {fileID: 2071611320351894911}
@@ -1061,55 +1059,6 @@ Transform:
   - {fileID: 3592184238525251182}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!136 &8045138635086140658
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5506370006722563975}
-  m_Material: {fileID: 13400000, guid: 710c32a0f2d0ebf499ca76ed3e78211d, type: 2}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 0
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0.5, z: 0}
---- !u!143 &8039255882697157949
-CharacterController:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5506370006722563975}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 0
-  serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
-  m_SlopeLimit: 45
-  m_StepOffset: 0.3
-  m_SkinWidth: 0.08
-  m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &8452318880774885986
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1202,7 +1151,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   config: {fileID: 11400000, guid: cf593dd0b4f811148859b305b465ff5b, type: 2}
-  botId: 
   animator: {fileID: 6740742537238954059}
 --- !u!114 &7758775867698566018
 MonoBehaviour:
@@ -1216,12 +1164,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 87cc45dcc9096be44a9240f6b21f1a16, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  aiConfig: {fileID: 11400000, guid: ba58c22950fe11846ba78fc30cb4aed1, type: 2}
-  pathfindingConfig: {fileID: 11400000, guid: 3ac17f59fcbe29546931bbbbb986201f, type: 2}
-  movementConfig: {fileID: 11400000, guid: 5a37bb5a3572e5d458d016db46fb76fb, type: 2}
+  config: {fileID: 11400000, guid: cf593dd0b4f811148859b305b465ff5b, type: 2}
   voxelController: {fileID: 4074595813306363480}
   animator: {fileID: 6740742537238954059}
-  target: {fileID: 0}
 --- !u!1 &5563819542688433683
 GameObject:
   m_ObjectHideFlags: 0

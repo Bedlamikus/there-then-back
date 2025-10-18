@@ -220,7 +220,7 @@ public class VoxelPathfinding
         float distance = Vector3Int.Distance(from, to);
         
         // Проверяем что прыжок не слишком далеко
-        if (distance > config.jumpDistance)
+        if (distance > config.jumpDistanceVoxels)
         {
             return false;
         }
